@@ -73,6 +73,9 @@ test -f "$SHARED_DIR/backend.env" || { echo "Shared backend.env is missing." >&2
 test ! -e "$RELEASE_DIR" || { echo "Release already exists: $RELEASE_DIR" >&2; exit 1; }
 
 mkdir -p "$RELEASES_DIR" "$SHARED_DIR"
+# The environment upload intentionally creates the deployment root with a
+# restrictive umask. Apache still needs to traverse the public application root.
+chmod 0755 "$DEPLOY_PATH" "$RELEASES_DIR"
 mkdir "$RELEASE_DIR"
 tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
 rm -f "$ARCHIVE"
