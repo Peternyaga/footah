@@ -80,6 +80,8 @@ rm -f "$ARCHIVE"
 test -f "$RELEASE_DIR/frontend/index.html" || { echo "Frontend package is incomplete." >&2; exit 1; }
 test -f "$RELEASE_DIR/backend/artisan" || { echo "Backend package is incomplete." >&2; exit 1; }
 test -f "$RELEASE_DIR/backend/vendor/autoload.php" || { echo "Composer dependencies are missing." >&2; exit 1; }
+test -f "$RELEASE_DIR/public-root/.htaccess" || { echo "Public subfolder bridge is missing." >&2; exit 1; }
+test -f "$RELEASE_DIR/public-root/index.php" || { echo "Public API front controller is missing." >&2; exit 1; }
 
 ln -s "$SHARED_DIR/backend.env" "$RELEASE_DIR/backend/.env"
 
@@ -98,6 +100,9 @@ cd "$RELEASE_DIR/backend"
 "$PHP_BIN" artisan optimize:clear
 "$PHP_BIN" artisan config:cache
 "$PHP_BIN" artisan route:cache
+
+install -m 0644 "$RELEASE_DIR/public-root/.htaccess" "$DEPLOY_PATH/.htaccess"
+install -m 0644 "$RELEASE_DIR/public-root/index.php" "$DEPLOY_PATH/index.php"
 
 ln -s "$RELEASE_DIR" "$NEXT_LINK"
 mv -Tf "$NEXT_LINK" "$CURRENT_LINK"

@@ -91,14 +91,15 @@ jobs:
           set -euo pipefail
           RELEASE_ID="${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ARCHIVE="final-whistle-${RELEASE_ID}.tar.gz"
-          mkdir -p package/frontend package/backend
+          mkdir -p package/frontend package/backend package/public-root
           cp -a dist/assets/. package/frontend/
+          cp -a deploy/public-root/. package/public-root/
           rsync -a backend/ package/backend/ \
             --exclude='.env' \
             --exclude='database/*.sqlite*' \
             --exclude='node_modules' \
             --exclude='tests'
-          tar -C package -czf "$ARCHIVE" frontend backend
+          tar -C package -czf "$ARCHIVE" frontend backend public-root
           echo "RELEASE_ID=$RELEASE_ID" >> "$GITHUB_ENV"
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
 

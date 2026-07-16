@@ -1,0 +1,24 @@
+Options -Indexes -MultiViews
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Never expose deployment metadata, secrets, logs, or backend source.
+    RewriteRule ^(?:releases|shared)(?:/|$) - [F,L,NC]
+    RewriteRule ^current/backend(?:/|$) - [F,L,NC]
+
+    # Forward bearer-token headers to Laravel.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Keep the public /api prefix while using the release's Laravel application.
+    RewriteRule ^api(?:/|$) index.php [L,QSA]
+
+    # Serve the exported Next.js application from the active release.
+    RewriteRule ^$ current/frontend/index.html [L]
+    RewriteRule ^current/frontend(?:/|$) - [L]
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+    RewriteRule ^(.+)$ current/frontend/$1 [L]
+</IfModule>

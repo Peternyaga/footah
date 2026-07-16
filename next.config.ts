@@ -1,8 +1,12 @@
 import type { NextConfig } from "next";
 
+const publicUrl = process.env.FRONTEND_URL;
+const basePath = publicUrl ? new URL(publicUrl).pathname.replace(/\/$/, "") : "";
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: "export",
+  basePath,
   typescript: {
     // TypeScript is checked explicitly by `npm run lint` before the production build.
     ignoreBuildErrors: true,
