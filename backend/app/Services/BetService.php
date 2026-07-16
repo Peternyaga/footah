@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Bet;
-use App\Models\PoolSetting;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vote;
@@ -23,15 +22,18 @@ class BetService
     /** @return array<string, mixed> */
     public function initiate(User $user, int $teamId): array
     {
-        $settings = PoolSetting::query()->firstOrFail();
+        $team = Team::query()->with('match')->whereKey($teamId)->where('active', true)->firstOrFail();
+        $settings = $team->match;
+        if (! $settings) {
+            throw new RuntimeException('This team is not assigned to a match.');
+        }
         if (! $settings->acceptsBets()) {
             throw new RuntimeException('Betting is closed.');
         }
-        $team = Team::query()->whereKey($teamId)->where('active', true)->firstOrFail();
 
         $bet = DB::transaction(function () use ($user, $team, $settings): Bet {
             User::query()->whereKey($user->id)->lockForUpdate()->first();
-            $existing = Bet::query()->where('user_id', $user->id)->lockForUpdate()->first();
+            $existing = Bet::query()->where('user_id', $user->id)->where('match_id', $settings->id)->lockForUpdate()->first();
 
             if ($existing?->status === Bet::STATUS_CONFIRMED) {
                 throw new RuntimeException('Your confirmed pick cannot be changed.');
@@ -40,10 +42,11 @@ class BetService
                 throw new RuntimeException('An M-Pesa request is already processing.');
             }
 
-            Vote::query()->updateOrCreate(['user_id' => $user->id], ['team_id' => $team->id]);
+            Vote::query()->updateOrCreate(['user_id' => $user->id, 'match_id' => $settings->id], ['team_id' => $team->id]);
 
             $values = [
                 'team_id' => $team->id,
+                'match_id' => $settings->id,
                 'amount' => $settings->entry_fee,
                 'status' => Bet::STATUS_PENDING,
                 'merchant_request_id' => null,

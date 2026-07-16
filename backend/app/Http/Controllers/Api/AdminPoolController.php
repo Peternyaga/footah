@@ -18,36 +18,107 @@ class AdminPoolController extends Controller
 {
     public function __construct(private readonly AuditService $audit, private readonly PayoutService $payouts) {}
 
-    public function overview(): JsonResponse
+    public function overview(Request $request): JsonResponse
     {
-        $users = User::query()->where('role', User::ROLE_PARTICIPANT)->with(['bet.team', 'bet.payout'])->latest()->get();
+        $match = $request->integer('match_id')
+            ? PoolSetting::query()->findOrFail($request->integer('match_id'))
+            : PoolSetting::current();
+        $users = User::query()->where('role', User::ROLE_PARTICIPANT)
+            ->with(['bets' => fn ($query) => $query->where('match_id', $match->id)->with(['team', 'payout'])])
+            ->latest()->get();
 
         return response()->json(['data' => [
-            'settings' => PoolSetting::query()->with('winnerTeam')->first(),
-            'teams' => Team::query()->orderBy('display_order')->get(),
-            'registrations' => $users->map(fn (User $user): array => [
-                'id' => $user->public_id,
-                'name' => $user->name,
-                'phone_number' => $user->phone_number,
-                'created_at' => $user->created_at->toIso8601String(),
-                'bet' => $user->bet ? [
-                    'id' => $user->bet->id,
-                    'public_id' => $user->bet->public_id,
-                    'team' => $user->bet->team->name,
-                    'team_id' => $user->bet->team_id,
-                    'amount' => $user->bet->amount,
-                    'status' => $user->bet->status,
-                    'mpesa_receipt_number' => $user->bet->mpesa_receipt_number,
-                    'result_description' => $user->bet->result_description,
-                    'payout' => $user->bet->payout?->amount,
-                ] : null,
-            ]),
+            'settings' => $match->load('winnerTeam'),
+            'teams' => Team::query()->where('match_id', $match->id)->orderBy('display_order')->get(),
+            'matches' => PoolSetting::query()->with(['winnerTeam', 'teams' => fn ($query) => $query->orderBy('display_order')])->latest('id')->get(),
+            'registrations' => $users->map(function (User $user): array {
+                $bet = $user->bets->first();
+
+                return [
+                    'id' => $user->public_id,
+                    'name' => $user->name,
+                    'phone_number' => $user->phone_number,
+                    'created_at' => $user->created_at->toIso8601String(),
+                    'bet' => $bet ? [
+                        'id' => $bet->id,
+                        'public_id' => $bet->public_id,
+                        'team' => $bet->team->name,
+                        'team_id' => $bet->team_id,
+                        'amount' => $bet->amount,
+                        'status' => $bet->status,
+                        'mpesa_receipt_number' => $bet->mpesa_receipt_number,
+                        'result_description' => $bet->result_description,
+                        'payout' => $bet->payout?->amount,
+                    ] : null,
+                ];
+            }),
         ]]);
+    }
+
+    public function createMatch(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'event_name' => ['required', 'string', 'max:160'],
+            'entry_fee' => ['required', 'integer', 'min:1'],
+            'betting_closes_at' => ['required', 'date', 'after:now'],
+            'teams' => ['required', 'array', 'size:2'],
+            'teams.*.name' => ['required', 'string', 'max:120'],
+            'teams.*.route' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $match = DB::transaction(function () use ($data): PoolSetting {
+            $match = PoolSetting::create([
+                'event_name' => trim($data['event_name']),
+                'entry_fee' => $data['entry_fee'],
+                'betting_closes_at' => $data['betting_closes_at'],
+                'status' => PoolSetting::STATUS_OPEN,
+                'cost_deduction' => 0,
+            ]);
+            $palette = [['#ef634d', '#f0b24e'], ['#376fdc', '#58c6ff']];
+            foreach ($data['teams'] as $index => $team) {
+                Team::create([
+                    'match_id' => $match->id,
+                    'code' => 'M'.$match->id.($index === 0 ? 'A' : 'B'),
+                    'name' => trim($team['name']),
+                    'route' => $team['route'] ?? null,
+                    'color' => $palette[$index][0],
+                    'color_secondary' => $palette[$index][1],
+                    'display_order' => $index + 1,
+                    'active' => true,
+                ]);
+            }
+
+            return $match;
+        });
+        $this->audit->record('match.created', $request->user(), $match, ['team_names' => collect($data['teams'])->pluck('name')->all()], $request);
+
+        return response()->json(['data' => $match->load('teams')], 201);
+    }
+
+    public function updateMatch(Request $request, PoolSetting $match): JsonResponse
+    {
+        if ($match->status === PoolSetting::STATUS_SETTLED) {
+            return response()->json(['message' => 'A settled match cannot be changed.'], 422);
+        }
+        $data = $request->validate([
+            'event_name' => ['sometimes', 'required', 'string', 'max:160'],
+            'entry_fee' => ['sometimes', 'integer', 'min:1'],
+            'betting_closes_at' => ['sometimes', 'date'],
+            'status' => ['sometimes', 'in:open,closed,postponed'],
+        ]);
+        $match->update($data);
+        $this->audit->record('match.updated', $request->user(), $match, $data, $request);
+
+        return response()->json(['data' => $match->fresh(['winnerTeam', 'teams'])]);
     }
 
     public function updateTeams(Request $request): JsonResponse
     {
         $data = $request->validate(['teams' => ['required', 'array', 'size:2'], 'teams.*.id' => ['required', 'integer', 'exists:teams,id'], 'teams.*.name' => ['required', 'string', 'max:120'], 'teams.*.route' => ['nullable', 'string', 'max:255']]);
+        $matches = Team::query()->whereIn('id', collect($data['teams'])->pluck('id'))->pluck('match_id')->unique();
+        if ($matches->count() !== 1 || PoolSetting::query()->whereKey($matches->first())->where('status', PoolSetting::STATUS_SETTLED)->exists()) {
+            return response()->json(['message' => 'These teams cannot be edited after the match is settled.'], 422);
+        }
         DB::transaction(function () use ($data): void {
             foreach ($data['teams'] as $item) {
                 Team::query()->whereKey($item['id'])->update(['name' => trim($item['name']), 'route' => $item['route'] ?? null]);
@@ -87,7 +158,9 @@ class AdminPoolController extends Controller
     {
         $data = $request->validate(['winner_team_id' => ['required', 'integer', 'exists:teams,id']]);
 
-        return response()->json(['data' => $this->payouts->settle(Team::findOrFail($data['winner_team_id']), $request->user())]);
+        $team = Team::query()->whereKey($data['winner_team_id'])->whereNotNull('match_id')->firstOrFail();
+
+        return response()->json(['data' => $this->payouts->settle($team, $request->user())]);
     }
 
     public function markPayoutPaid(Request $request, Payout $payout): JsonResponse

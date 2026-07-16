@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PoolSetting extends Model
 {
@@ -25,6 +26,17 @@ class PoolSetting extends Model
     public function winnerTeam(): BelongsTo
     {
         return $this->belongsTo(Team::class, 'winner_team_id');
+    }
+
+    public function teams(): HasMany
+    {
+        return $this->hasMany(Team::class, 'match_id');
+    }
+
+    public static function current(): self
+    {
+        return self::query()->where('status', self::STATUS_OPEN)->latest('id')->first()
+            ?? self::query()->latest('id')->firstOrFail();
     }
 
     public function acceptsBets(): bool

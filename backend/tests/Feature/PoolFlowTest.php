@@ -40,15 +40,15 @@ class PoolFlowTest extends TestCase
         ]);
         Cache::clear();
 
-        $this->teamA = Team::create(['code' => 'A', 'name' => 'Team A', 'color' => '#ef634d', 'color_secondary' => '#f0b24e', 'active' => true, 'display_order' => 1]);
-        $this->teamB = Team::create(['code' => 'B', 'name' => 'Team B', 'color' => '#376fdc', 'color_secondary' => '#58c6ff', 'active' => true, 'display_order' => 2]);
-        PoolSetting::create([
+        $match = PoolSetting::create([
             'event_name' => 'Office final',
             'entry_fee' => 100,
             'betting_closes_at' => now()->addDay(),
             'status' => PoolSetting::STATUS_OPEN,
             'cost_deduction' => 0,
         ]);
+        $this->teamA = Team::create(['match_id' => $match->id, 'code' => 'A', 'name' => 'Team A', 'color' => '#ef634d', 'color_secondary' => '#f0b24e', 'active' => true, 'display_order' => 1]);
+        $this->teamB = Team::create(['match_id' => $match->id, 'code' => 'B', 'name' => 'Team B', 'color' => '#376fdc', 'color_secondary' => '#58c6ff', 'active' => true, 'display_order' => 2]);
     }
 
     public function test_participant_registration_normalizes_and_protects_the_phone_number(): void
@@ -215,6 +215,7 @@ class PoolFlowTest extends TestCase
         Bet::create([
             'public_id' => (string) Str::uuid(),
             'user_id' => $user->id,
+            'match_id' => $this->teamA->match_id,
             'team_id' => $this->teamA->id,
             'amount' => 100,
             'status' => Bet::STATUS_PROCESSING,
@@ -254,6 +255,7 @@ class PoolFlowTest extends TestCase
             Bet::create([
                 'public_id' => (string) Str::uuid(),
                 'user_id' => $user->id,
+                'match_id' => $team->match_id,
                 'team_id' => $team->id,
                 'amount' => 100,
                 'status' => Bet::STATUS_CONFIRMED,
@@ -270,6 +272,46 @@ class PoolFlowTest extends TestCase
 
         $this->assertSame([167, 166, 166], Payout::query()->orderBy('id')->pluck('amount')->all());
         $this->assertDatabaseHas('pool_settings', ['status' => PoolSetting::STATUS_SETTLED, 'winner_team_id' => $this->teamA->id]);
+    }
+
+    public function test_admin_can_create_close_and_settle_a_match_with_teams(): void
+    {
+        $admin = User::create([
+            'public_id' => (string) Str::uuid(),
+            'name' => 'Match Admin',
+            'email' => 'matches@example.test',
+            'role' => User::ROLE_ADMIN,
+            'password' => 'password',
+        ]);
+        $token = $admin->createToken('test-admin', ['admin'])->plainTextToken;
+
+        $created = $this->withToken($token)->postJson('/api/admin/matches', [
+            'event_name' => 'Office Semi Final',
+            'entry_fee' => 150,
+            'betting_closes_at' => now()->addDays(2)->toIso8601String(),
+            'teams' => [['name' => 'Lions'], ['name' => 'Eagles']],
+        ])->assertCreated()
+            ->assertJsonPath('data.event_name', 'Office Semi Final')
+            ->assertJsonCount(2, 'data.teams');
+
+        $matchId = (int) $created->json('data.id');
+        $winnerId = (int) $created->json('data.teams.0.id');
+
+        $participantToken = $this->registerParticipant('Two Match Voter', '0712000099');
+        $this->withToken($participantToken)->putJson('/api/vote', ['team_id' => $this->teamA->id])->assertOk();
+        $this->withToken($participantToken)->putJson('/api/vote', ['team_id' => $winnerId])->assertOk();
+        $this->assertDatabaseCount('votes', 2);
+
+        $this->withToken($token)->patchJson('/api/admin/matches/'.$matchId, ['status' => PoolSetting::STATUS_CLOSED])
+            ->assertOk()
+            ->assertJsonPath('data.status', PoolSetting::STATUS_CLOSED);
+
+        $this->withToken($token)->postJson('/api/admin/settle', ['winner_team_id' => $winnerId])
+            ->assertOk()
+            ->assertJsonPath('data.winner_team_id', $winnerId);
+
+        $this->assertDatabaseHas('pool_settings', ['id' => $matchId, 'status' => PoolSetting::STATUS_SETTLED, 'winner_team_id' => $winnerId]);
+        $this->assertDatabaseCount('pool_settings', 2);
     }
 
     public function test_repeated_deployment_seeding_preserves_admin_edited_teams(): void

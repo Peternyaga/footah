@@ -10,22 +10,25 @@ use App\Models\User;
 class PoolService
 {
     /** @return array<string, mixed> */
-    public function publicState(): array
+    public function publicState(?int $matchId = null): array
     {
-        $settings = PoolSetting::query()->with('winnerTeam')->firstOrFail();
+        $settings = ($matchId ? PoolSetting::query()->whereKey($matchId) : PoolSetting::query()->whereKey(PoolSetting::current()->id))
+            ->with('winnerTeam')->firstOrFail();
         $teams = Team::query()
+            ->where('match_id', $settings->id)
             ->where('active', true)
             ->orderBy('display_order')
             ->withCount('votes')
             ->withCount(['bets as backers' => fn ($query) => $query->where('status', Bet::STATUS_CONFIRMED)])
             ->withSum(['bets as pooled' => fn ($query) => $query->where('status', Bet::STATUS_CONFIRMED)], 'amount')
             ->get();
-        $totalPool = (int) Bet::query()->where('status', Bet::STATUS_CONFIRMED)->sum('amount');
+        $totalPool = (int) Bet::query()->where('match_id', $settings->id)->where('status', Bet::STATUS_CONFIRMED)->sum('amount');
         $status = $settings->acceptsBets()
             ? PoolSetting::STATUS_OPEN
             : ($settings->status === PoolSetting::STATUS_OPEN ? PoolSetting::STATUS_CLOSED : $settings->status);
 
         return [
+            'match_id' => $settings->id,
             'event_name' => $settings->event_name,
             'entry_fee' => $settings->entry_fee,
             'betting_closes_at' => $settings->betting_closes_at->toIso8601String(),
@@ -44,14 +47,15 @@ class PoolService
     }
 
     /** @return array<string, mixed>|null */
-    public function receipt(User $user): ?array
+    public function receipt(User $user, ?int $matchId = null): ?array
     {
-        $bet = $user->bet()->with(['team', 'payout'])->first();
+        $matchId ??= PoolSetting::current()->id;
+        $bet = $user->bets()->where('match_id', $matchId)->with(['team', 'payout'])->first();
         if (! $bet) {
             return null;
         }
 
-        $settings = PoolSetting::query()->first();
+        $settings = PoolSetting::query()->find($matchId);
         $isWinner = $settings?->winner_team_id === $bet->team_id && $bet->status === Bet::STATUS_CONFIRMED;
 
         return [
@@ -65,7 +69,7 @@ class PoolService
             'confirmed_at' => $bet->confirmed_at?->toIso8601String(),
             'payout' => $bet->payout?->amount,
             'fellow_winners' => $isWinner
-                ? User::query()->whereHas('bet', fn ($query) => $query->where('team_id', $bet->team_id)->where('status', Bet::STATUS_CONFIRMED))->orderBy('name')->pluck('name')
+                ? User::query()->whereHas('bets', fn ($query) => $query->where('match_id', $matchId)->where('team_id', $bet->team_id)->where('status', Bet::STATUS_CONFIRMED))->orderBy('name')->pluck('name')
                 : [],
         ];
     }
