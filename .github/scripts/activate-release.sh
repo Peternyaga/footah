@@ -5,6 +5,7 @@ set -euo pipefail
 : "${DEPLOY_PATH:?DEPLOY_PATH is required}"
 : "${RELEASE_ID:?RELEASE_ID is required}"
 : "${KEEP_RELEASES:?KEEP_RELEASES is required}"
+SERVER_PHP_BINARY="${SERVER_PHP_BINARY:-}"
 
 if [[ ! "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$DEPLOY_PATH" == "/" ]]; then
   echo "Refusing unsafe DEPLOY_PATH: $DEPLOY_PATH" >&2
@@ -18,6 +19,47 @@ if [[ ! "$KEEP_RELEASES" =~ ^[1-9][0-9]*$ ]]; then
   echo "KEEP_RELEASES must be a positive integer." >&2
   exit 1
 fi
+if [[ -n "$SERVER_PHP_BINARY" ]] && [[ ! "$SERVER_PHP_BINARY" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+  echo "Refusing unsafe SERVER_PHP_BINARY: $SERVER_PHP_BINARY" >&2
+  exit 1
+fi
+
+PHP_CANDIDATES=()
+if [[ -n "$SERVER_PHP_BINARY" ]]; then
+  PHP_CANDIDATES+=("$SERVER_PHP_BINARY")
+fi
+PHP_CANDIDATES+=(
+  "/opt/cpanel/ea-php85/root/usr/bin/php"
+  "/opt/cpanel/ea-php84/root/usr/bin/php"
+  "/opt/cpanel/ea-php83/root/usr/bin/php"
+  "/opt/alt/php85/usr/bin/php"
+  "/opt/alt/php84/usr/bin/php"
+  "/opt/alt/php83/usr/bin/php"
+  "/opt/plesk/php/8.5/bin/php"
+  "/opt/plesk/php/8.4/bin/php"
+  "/opt/plesk/php/8.3/bin/php"
+  "php85"
+  "php84"
+  "php83"
+  "php"
+)
+
+PHP_BIN=""
+for candidate in "${PHP_CANDIDATES[@]}"; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    version_id="$("$candidate" -r 'echo PHP_VERSION_ID;' 2>/dev/null || true)"
+    if [[ "$version_id" =~ ^[0-9]+$ ]] && (( version_id >= 80300 )); then
+      PHP_BIN="$candidate"
+      break
+    fi
+  fi
+done
+
+if [[ -z "$PHP_BIN" ]]; then
+  echo "No PHP 8.3+ CLI binary was found. Set the GitHub variable SERVER_PHP_BINARY to the hosting PHP 8.3 executable." >&2
+  exit 1
+fi
+echo "Using $PHP_BIN ($("$PHP_BIN" -r 'echo PHP_VERSION;'))"
 
 RELEASES_DIR="$DEPLOY_PATH/releases"
 SHARED_DIR="$DEPLOY_PATH/shared"
@@ -52,10 +94,10 @@ mkdir -p "$RELEASE_DIR/backend/bootstrap/cache"
 chmod -R ug+rwX "$SHARED_DIR/storage" "$RELEASE_DIR/backend/bootstrap/cache"
 
 cd "$RELEASE_DIR/backend"
-php artisan optimize:clear
-php artisan migrate --seed --force
-php artisan config:cache
-php artisan route:cache
+"$PHP_BIN" artisan optimize:clear
+"$PHP_BIN" artisan migrate --seed --force
+"$PHP_BIN" artisan config:cache
+"$PHP_BIN" artisan route:cache
 
 ln -s "$RELEASE_DIR" "$NEXT_LINK"
 mv -Tf "$NEXT_LINK" "$CURRENT_LINK"

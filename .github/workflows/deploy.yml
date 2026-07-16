@@ -27,6 +27,7 @@ jobs:
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
       KEEP_RELEASES: ${{ vars.KEEP_RELEASES || '5' }}
+      SERVER_PHP_BINARY: ${{ vars.SERVER_PHP_BINARY }}
       FRONTEND_URL: ${{ vars.FRONTEND_URL }}
       NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
 
@@ -50,6 +51,9 @@ jobs:
           [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "DEPLOY_PATH must be a safe absolute Linux path." >&2; exit 1; }
           [ "$DEPLOY_PATH" != "/" ] || { echo "DEPLOY_PATH cannot be root." >&2; exit 1; }
           [[ "$KEEP_RELEASES" =~ ^[1-9][0-9]*$ ]] || { echo "KEEP_RELEASES must be a positive integer." >&2; exit 1; }
+          if [ -n "$SERVER_PHP_BINARY" ]; then
+            [[ "$SERVER_PHP_BINARY" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "SERVER_PHP_BINARY must be a safe absolute path." >&2; exit 1; }
+          fi
 
       - name: Check out source
         uses: actions/checkout@v5
@@ -125,7 +129,7 @@ jobs:
           set -euo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' RELEASE_ID='$RELEASE_ID' KEEP_RELEASES='$KEEP_RELEASES' bash -s" \
+            "DEPLOY_PATH='$DEPLOY_PATH' RELEASE_ID='$RELEASE_ID' KEEP_RELEASES='$KEEP_RELEASES' SERVER_PHP_BINARY='$SERVER_PHP_BINARY' bash -s" \
             < .github/scripts/activate-release.sh
 
       - name: Check deployed sites

@@ -25,7 +25,7 @@ DEPLOYMENT.md         Complete local and production setup guide
 
 ## Quick local start
 
-You need Node.js 20+, PHP 8.2+, Composer, and MySQL 8+.
+You need Node.js 20+, PHP 8.3+, Composer, and MySQL 8+.
 
 ```bash
 # Terminal 1: API

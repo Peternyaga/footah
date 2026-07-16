@@ -5,7 +5,7 @@
 - A frontend domain, for example `pool.example.com`
 - A backend domain, for example `api.pool.example.com`
 - HTTPS on both domains; Safaricom must reach the callback over public HTTPS
-- PHP 8.2 or newer with `curl`, `ctype`, `fileinfo`, `mbstring`, `openssl`, `pdo_mysql`, `tokenizer`, and `xml`
+- PHP 8.3 or newer with `curl`, `ctype`, `fileinfo`, `mbstring`, `openssl`, `pdo_mysql`, `tokenizer`, and `xml`
 - Composer 2, Node.js 20 or newer, and npm
 - MySQL 8+ or MariaDB 10.6+
 - A Safaricom Daraja app and either sandbox credentials or an approved live shortcode/passkey
@@ -189,6 +189,7 @@ Create a GitHub Environment named `production` under **Settings → Environments
 | `NEXT_PUBLIC_API_BASE_URL` | `https://api.pool.example.com/api` | Yes | API URL compiled into the frontend |
 | `NODE_VERSION` | `20` | No | GitHub build version; defaults to `20` |
 | `PHP_VERSION` | `8.3` | No | GitHub build version; match the server PHP version |
+| `SERVER_PHP_BINARY` | `/opt/cpanel/ea-php83/root/usr/bin/php` | No | Server PHP 8.3+ CLI path; common hosting paths are detected automatically |
 | `KEEP_RELEASES` | `5` | No | Number of releases retained for manual rollback |
 
 Add these under **Environment secrets**:
