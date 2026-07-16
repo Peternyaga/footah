@@ -6,6 +6,7 @@ use App\Models\Bet;
 use App\Models\PoolSetting;
 use App\Models\Team;
 use App\Models\User;
+use App\Models\Vote;
 use App\Services\Payments\Mpesa\MpesaStkPushService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -38,6 +39,8 @@ class BetService
             if ($existing?->status === Bet::STATUS_PROCESSING && $existing->initiated_at?->gt(now()->subMinutes(2))) {
                 throw new RuntimeException('An M-Pesa request is already processing.');
             }
+
+            Vote::query()->updateOrCreate(['user_id' => $user->id], ['team_id' => $team->id]);
 
             $values = [
                 'team_id' => $team->id,

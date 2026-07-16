@@ -18,4 +18,9 @@ class Team extends Model
     {
         return $this->hasMany(Bet::class);
     }
+
+    public function votes(): HasMany
+    {
+        return $this->hasMany(Vote::class);
+    }
 }

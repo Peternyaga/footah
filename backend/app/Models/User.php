@@ -70,6 +70,11 @@ class User extends Authenticatable
         return $this->hasOne(Bet::class);
     }
 
+    public function vote(): HasOne
+    {
+        return $this->hasOne(Vote::class);
+    }
+
     public function chatMessages(): HasMany
     {
         return $this->hasMany(ChatMessage::class);

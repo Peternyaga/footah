@@ -79,7 +79,6 @@ class AuthController extends Controller
             return response()->json(['message' => 'The phone number or password is incorrect.'], 422);
         }
 
-        $user->tokens()->where('name', 'participant-web')->delete();
         $token = $user->createToken('participant-web', ['participant'])->plainTextToken;
         $this->audit->record('participant.login', $user, $user, [], $request);
 

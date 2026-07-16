@@ -16,6 +16,7 @@ class PoolService
         $teams = Team::query()
             ->where('active', true)
             ->orderBy('display_order')
+            ->withCount('votes')
             ->withCount(['bets as backers' => fn ($query) => $query->where('status', Bet::STATUS_CONFIRMED)])
             ->withSum(['bets as pooled' => fn ($query) => $query->where('status', Bet::STATUS_CONFIRMED)], 'amount')
             ->get();
@@ -36,6 +37,7 @@ class PoolService
             'postponement_notice' => $settings->postponement_notice,
             'teams' => $teams->map(fn (Team $team): array => array_merge($this->teamData($team), [
                 'backers' => (int) $team->backers,
+                'votes' => (int) $team->votes_count,
                 'pooled' => (int) ($team->pooled ?? 0),
             ]))->values(),
         ];

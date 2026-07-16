@@ -26,8 +26,11 @@ export type ApiTeam = {
   color: string;
   color_secondary: string;
   backers?: number;
+  votes?: number;
   pooled?: number;
 };
+
+export type VoteChoice = { team: ApiTeam; voted_at: string | null };
 
 export type PoolState = {
   event_name: string;

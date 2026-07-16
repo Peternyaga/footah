@@ -96,18 +96,57 @@ class PoolFlowTest extends TestCase
             ->postJson('/api/auth/logout')
             ->assertOk();
 
-        $this->postJson('/api/auth/login', [
+        $login = $this->postJson('/api/auth/login', [
             'phone_number' => '+254 712 345 678',
             'password' => 'correct-horse',
         ])->assertOk()
             ->assertJsonPath('data.participant.name', 'Peter Nyaga')
             ->assertJsonStructure(['data' => ['token', 'participant']]);
 
+        $token = (string) $login->json('data.token');
+        $this->withToken($token)->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Peter Nyaga');
+
+        $this->postJson('/api/auth/login', [
+            'phone_number' => '0712345678',
+            'password' => 'correct-horse',
+        ])->assertOk();
+
+        $this->withToken($token)->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Peter Nyaga');
+
         $this->postJson('/api/auth/login', [
             'phone_number' => '0712345678',
             'password' => 'wrong-password',
         ])->assertUnprocessable()
             ->assertJsonPath('message', 'The phone number or password is incorrect.');
+    }
+
+    public function test_authenticated_participant_can_vote_and_change_their_vote(): void
+    {
+        $token = $this->registerParticipant('Voting Player', '0712345678');
+
+        $this->withToken($token)->getJson('/api/me/vote')
+            ->assertOk()
+            ->assertJsonPath('data', null);
+
+        $this->withToken($token)->putJson('/api/vote', ['team_id' => $this->teamA->id])
+            ->assertOk()
+            ->assertJsonPath('data.team.id', $this->teamA->id);
+
+        $this->withToken($token)->putJson('/api/vote', ['team_id' => $this->teamB->id])
+            ->assertOk()
+            ->assertJsonPath('data.team.id', $this->teamB->id);
+
+        $this->assertDatabaseCount('votes', 1);
+        $this->assertDatabaseHas('votes', ['team_id' => $this->teamB->id]);
+
+        $this->getJson('/api/pool')
+            ->assertOk()
+            ->assertJsonPath('data.teams.0.votes', 0)
+            ->assertJsonPath('data.teams.1.votes', 1);
     }
 
     public function test_stk_push_is_confirmed_only_after_a_valid_callback(): void

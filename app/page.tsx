@@ -32,16 +32,16 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { AdminOverview, ApiError, BetReceipt, ChatItem, PoolState, apiRequest } from "../lib/api";
+import { AdminOverview, ApiError, BetReceipt, ChatItem, PoolState, VoteChoice, apiRequest } from "../lib/api";
 
 type View = "home" | "play" | "chat" | "receipt" | "admin";
 type AuthMode = "register" | "login";
-type Team = { id: number; code: string; name: string; route: string; color: string; color2: string; backers: number; amount: number };
+type Team = { id: number; code: string; name: string; route: string; color: string; color2: string; backers: number; votes: number; amount: number };
 type Registration = { id?: string; betId?: number; name: string; phone: string; team: number; code: string; status: BetReceipt["status"]; time: string };
 
 const baseTeams: Team[] = [
-  { id: 1, code: "A", name: "Finalist A", route: "Winner · Spain vs France", color: "#f35f44", color2: "#ffb45e", backers: 0, amount: 0 },
-  { id: 2, code: "B", name: "Finalist B", route: "Winner · England vs Argentina", color: "#3568e8", color2: "#58c6ff", backers: 0, amount: 0 },
+  { id: 1, code: "A", name: "Finalist A", route: "Winner · Spain vs France", color: "#f35f44", color2: "#ffb45e", backers: 0, votes: 0, amount: 0 },
+  { id: 2, code: "B", name: "Finalist B", route: "Winner · England vs Argentina", color: "#3568e8", color2: "#58c6ff", backers: 0, votes: 0, amount: 0 },
 ];
 
 const seededRegistrations: Registration[] = [];
@@ -87,6 +87,7 @@ export default function PoolPage() {
   const [age, setAge] = useState(false);
   const [terms, setTerms] = useState(false);
   const [formError, setFormError] = useState("");
+  const [voteNotice, setVoteNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [apiNotice, setApiNotice] = useState("");
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -112,7 +113,7 @@ export default function PoolPage() {
       const state = await apiRequest<PoolState>("/pool");
       setPoolState(state);
       setBettingClosesAt(state.betting_closes_at);
-      setTeams(state.teams.map((team) => ({ id: team.id, code: team.code, name: team.name, route: team.route || "Finalist", color: team.color, color2: team.color_secondary, backers: team.backers || 0, amount: team.pooled || 0 })));
+      setTeams(state.teams.map((team) => ({ id: team.id, code: team.code, name: team.name, route: team.route || "Finalist", color: team.color, color2: team.color_secondary, backers: team.backers || 0, votes: team.votes || 0, amount: team.pooled || 0 })));
       setWinner(state.winner?.id || null);
       setApiNotice("");
     } catch (error) {
@@ -125,6 +126,12 @@ export default function PoolPage() {
     if (!item) return;
     setReceipt({ id: item.id, name: name || "Your entry", phone: "Private", team: item.team.id, code: item.mpesa_receipt_number || "Pending", status: item.status, time: item.confirmed_at ? new Date(item.confirmed_at).toLocaleString() : "Processing" });
   }, [name]);
+
+  const refreshVote = useCallback(async (token: string) => {
+    const vote = await apiRequest<VoteChoice | null>("/me/vote", {}, token);
+    if (vote) { setSelected(vote.team.id); setStep(3); }
+    return vote;
+  }, []);
 
   const refreshChat = useCallback(async (token: string) => {
     const items = await apiRequest<ChatItem[]>("/chat", {}, token);
@@ -143,12 +150,12 @@ export default function PoolPage() {
     if (participant) {
       setAuthToken(participant);
       apiRequest<{ name: string }>("/auth/me", {}, participant)
-        .then((profile) => { setName(profile.name); setStep(2); return refreshReceipt(participant); })
+        .then((profile) => { setName(profile.name); setStep(2); return Promise.all([refreshReceipt(participant), refreshVote(participant)]); })
         .catch(() => { localStorage.removeItem("final-pool-token"); setAuthToken(null); });
     }
     if (admin) { setAdminToken(admin); setAdminUnlocked(true); loadAdmin(admin).catch(() => sessionStorage.removeItem("final-pool-admin-token")); }
     refreshPool();
-  }, [loadAdmin, refreshPool, refreshReceipt]);
+  }, [loadAdmin, refreshPool, refreshReceipt, refreshVote]);
 
   useEffect(() => {
     if (!authToken || !receipt || !["pending", "processing"].includes(receipt.status)) return;
@@ -201,7 +208,7 @@ export default function PoolPage() {
       const result = await apiRequest<{ token: string; participant: { name: string } }>("/auth/login", { method: "POST", body: JSON.stringify({ phone_number: phone, password }) });
       localStorage.setItem("final-pool-token", result.token);
       setAuthToken(result.token); setName(result.participant.name); setPassword(""); setStep(2);
-      await refreshReceipt(result.token);
+      await Promise.all([refreshReceipt(result.token), refreshVote(result.token)]);
     } catch (error) { setFormError(error instanceof ApiError ? error.message : "Sign in failed."); }
     finally { setBusy(false); }
   };
@@ -211,6 +218,18 @@ export default function PoolPage() {
     localStorage.removeItem("final-pool-token");
     setAuthToken(null); setReceipt(null); setName(""); setPhone(""); setPassword(""); setStep(1); setAuthMode("login");
     if (token) await apiRequest<void>("/auth/logout", { method: "POST" }, token).catch(() => undefined);
+  };
+
+  const submitVote = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selected || !authToken) { setFormError("Choose a team before casting your vote."); return; }
+    setBusy(true); setFormError(""); setVoteNotice("");
+    try {
+      const vote = await apiRequest<VoteChoice>("/vote", { method: "PUT", body: JSON.stringify({ team_id: selected }) }, authToken);
+      setSelected(vote.team.id); setVoteNotice(`Your vote for ${vote.team.name} is saved.`); setStep(3);
+      await refreshPool();
+    } catch (error) { setFormError(error instanceof Error ? error.message : "Your vote could not be saved."); }
+    finally { setBusy(false); }
   };
 
   const submitPayment = async (e: FormEvent) => {
@@ -276,7 +295,7 @@ export default function PoolPage() {
         </button>
         <nav className={mobileOpen ? "nav nav-open" : "nav"}>
           <button className={view === "home" ? "active" : ""} onClick={() => navigate("home")}>Pool</button>
-          <button className={view === "play" ? "active" : ""} onClick={() => navigate("play")}>Place a bet</button>
+          <button className={view === "play" ? "active" : ""} onClick={() => navigate("play")}>Vote & play</button>
           <button className={view === "chat" ? "active" : ""} onClick={() => navigate("chat")}>Chat {messages.length > 0 && <span className="nav-dot">{messages.length}</span>}</button>
           {receipt && <button className={view === "receipt" ? "active" : ""} onClick={() => navigate("receipt")}>My receipt</button>}
           <button className={view === "admin" ? "active" : ""} onClick={() => navigate("admin")}><LockKeyhole size={14} /> Admin</button>
@@ -332,12 +351,12 @@ export default function PoolPage() {
                   <div className="team-top"><span className="team-seed">0{index + 1}</span><span className="trend"><Flame size={14} /> {index === 0 ? "Leading" : "Underdog"}</span></div>
                   <div className="team-crest">{team.code}<small>FINALIST</small></div>
                   <div className="team-info"><span>{team.route}</span><h3>{team.name}</h3></div>
-                  <div className="team-stats"><div><strong>{team.backers}</strong><small>BACKERS</small></div><div><strong>{money.format(team.amount)}</strong><small>STAKED</small></div></div>
+                  <div className="team-stats"><div><strong>{team.votes}</strong><small>VOTES</small></div><div><strong>{money.format(team.amount)}</strong><small>STAKED</small></div></div>
                   <button onClick={() => beginPick(team.id)}>Back {team.name} <ArrowRight size={17} /></button>
                 </article>
               ))}
             </div>
-            <div className="share-bar"><div className="split-bar"><span style={{ width: `${teams[0].backers + teams[1].backers ? Math.round((teams[0].backers / (teams[0].backers + teams[1].backers)) * 100) : 50}%` }} /></div><span>{teams[0].backers + teams[1].backers ? `${Math.round((teams[0].backers / (teams[0].backers + teams[1].backers)) * 100)}% of the office is backing ${teams[0].name}` : "Be the first confirmed backer"}</span></div>
+            <div className="share-bar"><div className="split-bar"><span style={{ width: `${teams[0].votes + teams[1].votes ? Math.round((teams[0].votes / (teams[0].votes + teams[1].votes)) * 100) : 50}%` }} /></div><span>{teams[0].votes + teams[1].votes ? `${Math.round((teams[0].votes / (teams[0].votes + teams[1].votes)) * 100)}% of voters chose ${teams[0].name}` : "Be the first to vote"}</span></div>
           </section>
 
           <section className="countdown-section">
@@ -351,8 +370,8 @@ export default function PoolPage() {
             <div className="section-heading"><div><div className="eyebrow dark">NO DRAMA, JUST FOOTBALL</div><h2>Three steps. Then we watch.</h2></div><button className="text-link" onClick={() => navigate("play")}>Read the pool rules <ArrowRight size={15} /></button></div>
             <div className="steps-grid">
               <div><span>01</span><UserRound /><h3>Register</h3><p>Your full name and Safaricom number. We keep phone numbers private.</p></div>
-              <div><span>02</span><WalletCards /><h3>Pick & pay</h3><p>Choose a finalist and send exactly KES 100 via M-Pesa.</p></div>
-              <div><span>03</span><Trophy /><h3>Win the pool</h3><p>The full pot is split evenly among confirmed winning backers.</p></div>
+              <div><span>02</span><BadgeCheck /><h3>Cast your vote</h3><p>Choose the team you believe will win. You can change your vote until entries close.</p></div>
+              <div><span>03</span><WalletCards /><h3>Back your call</h3><p>Send exactly KES 100 via M-Pesa to join the payout pool.</p></div>
             </div>
           </section>
         </>
@@ -361,7 +380,7 @@ export default function PoolPage() {
       {view === "play" && (
         <section className="app-page content-shell">
           <div className="page-intro"><div className="eyebrow dark">YOUR ENTRY</div><h1>Make your call.</h1><p>Registration takes a minute. Your pick only counts after Safaricom confirms the M-Pesa payment.</p></div>
-          <div className="stepper"><span className={step >= 1 ? "done" : ""}><i>{step > 1 ? <Check /> : "1"}</i> Register</span><b /><span className={step >= 2 ? "done" : ""}><i>2</i> Pick a team</span><b /><span className={step >= 3 ? "done" : ""}><i>3</i> Pay</span></div>
+          <div className="stepper"><span className={step >= 1 ? "done" : ""}><i>{step > 1 ? <Check /> : "1"}</i> Register</span><b /><span className={step >= 2 ? "done" : ""}><i>{step > 2 ? <Check /> : "2"}</i> Vote</span><b /><span className={step >= 3 ? "done" : ""}><i>3</i> Pay</span></div>
           {step === 1 ? (
             <div className="form-layout">
               <form className="paper-card form-card" onSubmit={authMode === "register" ? submitRegistration : loginParticipant}>
@@ -376,13 +395,25 @@ export default function PoolPage() {
               </form>
               <aside className="rules-card"><ShieldCheck /><h3>{authMode === "register" ? "Your details stay private" : "Pick up where you left off"}</h3><p>{authMode === "register" ? "Only the organiser can see your number. Public pool totals and chat use first names only." : "Sign in from any device to see your existing pick, payment status, and receipt."}</p><hr /><h4>Quick rules</h4><ul><li>One confirmed entry per phone</li><li>KES 100 fixed stake</li><li>Entries close at kickoff</li><li>Manual payout after review</li></ul></aside>
             </div>
+          ) : step === 2 ? (
+            <div className="form-layout">
+              <form className="paper-card form-card" onSubmit={submitVote}>
+                <div className="card-title"><span><BadgeCheck /></span><div><small>STEP 02</small><h2>Vote for the winner</h2></div></div>
+                <p className="form-lead">Choose one team. Your vote is saved immediately and can be changed until the pool closes.</p>
+                <div className="mini-team-grid">
+                  {teams.map((team) => <button type="button" key={team.id} className={selected === team.id ? "mini-team selected" : "mini-team"} onClick={() => { setSelected(team.id); setFormError(""); }} style={{ "--team": team.color } as React.CSSProperties}><span>{team.code}</span><div><small>{team.route}</small><strong>{team.name}</strong><em>{team.votes} vote{team.votes === 1 ? "" : "s"}</em></div>{selected === team.id && <BadgeCheck />}</button>)}
+                </div>
+                {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
+                <button className="primary-button full" type="submit" disabled={busy || !selected}>{busy ? "Saving vote…" : selected ? `Vote for ${teamName(selected)}` : "Choose a team"} <BadgeCheck /></button>
+              </form>
+              <aside className="rules-card"><Trophy /><h3>Your vote, your call</h3><p>Voting records your prediction. Payment is a separate optional step that makes the prediction eligible for the prize pool.</p></aside>
+            </div>
           ) : (
             <div className="form-layout">
               <form className="paper-card form-card" onSubmit={submitPayment}>
-                <div className="card-title"><span><Trophy /></span><div><small>STEPS 02 + 03</small><h2>Pick, pay, submit</h2></div></div>
-                <div className="mini-team-grid">
-                  {teams.map((team) => <button type="button" key={team.id} className={selected === team.id ? "mini-team selected" : "mini-team"} onClick={() => setSelected(team.id)} style={{ "--team": team.color } as React.CSSProperties}><span>{team.code}</span><div><small>{team.route}</small><strong>{team.name}</strong></div>{selected === team.id && <BadgeCheck />}</button>)}
-                </div>
+                <div className="card-title"><span><WalletCards /></span><div><small>STEP 03</small><h2>Back your vote</h2></div></div>
+                {voteNotice && <div className="vote-success"><BadgeCheck /><span>{voteNotice}</span></div>}
+                <div className="selected-vote"><span style={{ background: teams.find((team) => team.id === selected)?.color }}>{teams.find((team) => team.id === selected)?.code}</span><div><small>YOUR VOTE</small><strong>{selected ? teamName(selected) : "No team selected"}</strong></div><button type="button" onClick={() => setStep(2)}>Change vote</button></div>
                 <div className="pay-instruction"><div><small>PAY EXACTLY</small><strong>{money.format(poolState?.entry_fee || 100)}</strong></div><ArrowRight /><div><small>ON YOUR PHONE</small><strong>STK PUSH</strong></div></div>
                 <div className="stk-explainer"><ShieldCheck /><span><strong>Safaricom confirms the payment.</strong> Keep your phone nearby, enter your M-Pesa PIN on the secure prompt, and wait for this page to update.</span></div>
                 {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
