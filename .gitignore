@@ -1,0 +1,11 @@
+node_modules
+.npm-cache
+.next
+.open-next
+out
+.wrangler
+.env*
+!.env.example
+*.log
+*.tsbuildinfo
+.DS_Store

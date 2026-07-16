@@ -1,0 +1,26 @@
+{
+  "name": "office-world-cup-final-pool",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build:worker": "opennextjs-cloudflare build",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opennextjs/cloudflare": "latest",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "^5.9.3",
+    "wrangler": "latest"
+  }
+}
