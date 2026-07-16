@@ -1,0 +1,38 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\PoolSetting;
+use App\Models\Team;
+use App\Models\User;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+
+class DatabaseSeeder extends Seeder
+{
+    public function run(): void
+    {
+        Team::updateOrCreate(['code' => 'A'], ['name' => 'Finalist A', 'route' => 'Winner · Spain vs France', 'color' => '#ef634d', 'color_secondary' => '#f0b24e', 'active' => true, 'display_order' => 1]);
+        Team::updateOrCreate(['code' => 'B'], ['name' => 'Finalist B', 'route' => 'Winner · England vs Argentina', 'color' => '#376fdc', 'color_secondary' => '#58c6ff', 'active' => true, 'display_order' => 2]);
+
+        PoolSetting::firstOrCreate(['id' => 1], [
+            'event_name' => config('pool.event_name'),
+            'entry_fee' => config('pool.entry_fee'),
+            'betting_closes_at' => config('pool.betting_closes_at'),
+            'status' => PoolSetting::STATUS_OPEN,
+            'cost_deduction' => config('pool.cost_deduction'),
+        ]);
+
+        if (filled(config('pool.admin_password'))) {
+            $admin = User::firstOrNew(['email' => strtolower((string) config('pool.admin_email'))]);
+            $admin->fill([
+                'name' => config('pool.admin_name'),
+                'role' => User::ROLE_ADMIN,
+                'password' => Hash::make((string) config('pool.admin_password')),
+            ]);
+            $admin->public_id ??= (string) Str::uuid();
+            $admin->save();
+        }
+    }
+}

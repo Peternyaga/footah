@@ -31,39 +31,31 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { AdminOverview, ApiError, BetReceipt, ChatItem, PoolState, apiRequest } from "../lib/api";
 
 type View = "home" | "play" | "chat" | "receipt" | "admin";
-type Team = { id: "a" | "b"; name: string; route: string; color: string; color2: string; backers: number };
-type Registration = { name: string; phone: string; team: "a" | "b"; code: string; status: "confirmed" | "pending" | "failed"; time: string };
+type Team = { id: number; code: string; name: string; route: string; color: string; color2: string; backers: number; amount: number };
+type Registration = { id?: string; betId?: number; name: string; phone: string; team: number; code: string; status: BetReceipt["status"]; time: string };
 
 const baseTeams: Team[] = [
-  { id: "a", name: "Finalist A", route: "Winner · Spain vs France", color: "#f35f44", color2: "#ffb45e", backers: 18 },
-  { id: "b", name: "Finalist B", route: "Winner · England vs Argentina", color: "#3568e8", color2: "#58c6ff", backers: 12 },
+  { id: 1, code: "A", name: "Finalist A", route: "Winner · Spain vs France", color: "#f35f44", color2: "#ffb45e", backers: 0, amount: 0 },
+  { id: 2, code: "B", name: "Finalist B", route: "Winner · England vs Argentina", color: "#3568e8", color2: "#58c6ff", backers: 0, amount: 0 },
 ];
 
-const seededRegistrations: Registration[] = [
-  { name: "Amina K.", phone: "2547•••••218", team: "a", code: "SGQ4T2M8KU", status: "confirmed", time: "Today, 12:42" },
-  { name: "Brian O.", phone: "2547•••••791", team: "b", code: "SGQ7R9P2HT", status: "confirmed", time: "Today, 12:18" },
-  { name: "Njeri M.", phone: "2541•••••044", team: "a", code: "SGQ8K3L6VP", status: "pending", time: "Today, 11:57" },
-  { name: "Kevin T.", phone: "2547•••••509", team: "b", code: "—", status: "failed", time: "Today, 11:21" },
-];
+const seededRegistrations: Registration[] = [];
 
-const seededMessages = [
-  { name: "Amina", initials: "AK", text: "Final week! Who else is staying up for the full match?", time: "12:05", color: "coral" },
-  { name: "Brian", initials: "BO", text: "No way I'm missing it. Finalist B all the way 👀", time: "12:08", color: "blue" },
-  { name: "Njeri", initials: "NM", text: "The underdog side of this pool is looking tempting.", time: "12:12", color: "gold" },
-];
+const seededMessages: Array<{ name: string; initials: string; text: string; time: string; color: string }> = [];
 
 const money = new Intl.NumberFormat("en-KE", { style: "currency", currency: "KES", maximumFractionDigits: 0 });
 
-function useCountdown() {
+function useCountdown(target: string) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  const diff = Math.max(0, new Date("2026-07-19T22:00:00+03:00").getTime() - now);
+  const diff = Math.max(0, new Date(target).getTime() - now);
   return {
     days: Math.floor(diff / 86400000),
     hours: Math.floor((diff % 86400000) / 3600000),
@@ -77,118 +69,173 @@ function Mark({ small = false }: { small?: boolean }) {
 }
 
 export default function PoolPage() {
-  const countdown = useCountdown();
+  const [bettingClosesAt, setBettingClosesAt] = useState("2026-07-19T22:00:00+03:00");
+  const countdown = useCountdown(bettingClosesAt);
   const [view, setView] = useState<View>("home");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [teams, setTeams] = useState(baseTeams);
-  const [selected, setSelected] = useState<"a" | "b" | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
   const [age, setAge] = useState(false);
   const [terms, setTerms] = useState(false);
   const [formError, setFormError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [apiNotice, setApiNotice] = useState("");
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [poolState, setPoolState] = useState<PoolState | null>(null);
   const [receipt, setReceipt] = useState<Registration | null>(null);
   const [copied, setCopied] = useState(false);
   const [messages, setMessages] = useState(seededMessages);
   const [message, setMessage] = useState("");
   const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [adminEmail, setAdminEmail] = useState("admin@example.com");
   const [passcode, setPasscode] = useState("");
   const [showPasscode, setShowPasscode] = useState(false);
   const [registrations, setRegistrations] = useState(seededRegistrations);
-  const [winnerCandidate, setWinnerCandidate] = useState<"a" | "b" | null>(null);
-  const [winner, setWinner] = useState<"a" | "b" | null>(null);
+  const [winnerCandidate, setWinnerCandidate] = useState<number | null>(null);
+  const [winner, setWinner] = useState<number | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [editingTeams, setEditingTeams] = useState(false);
   const [draftNames, setDraftNames] = useState([teams[0].name, teams[1].name]);
 
-  useEffect(() => {
+  const refreshPool = useCallback(async () => {
     try {
-      const savedTeams = localStorage.getItem("final-pool-teams");
-      const savedReceipt = localStorage.getItem("final-pool-receipt");
-      if (savedTeams) setTeams(JSON.parse(savedTeams));
-      if (savedReceipt) setReceipt(JSON.parse(savedReceipt));
-    } catch { /* demo storage is optional */ }
+      const state = await apiRequest<PoolState>("/pool");
+      setPoolState(state);
+      setBettingClosesAt(state.betting_closes_at);
+      setTeams(state.teams.map((team) => ({ id: team.id, code: team.code, name: team.name, route: team.route || "Finalist", color: team.color, color2: team.color_secondary, backers: team.backers || 0, amount: team.pooled || 0 })));
+      setWinner(state.winner?.id || null);
+      setApiNotice("");
+    } catch (error) {
+      setApiNotice(error instanceof Error ? error.message : "The live pool API is unavailable.");
+    }
   }, []);
 
-  const confirmed = registrations.filter((item) => item.status === "confirmed").length + 28;
-  const totalPool = confirmed * 100;
-  const teamTotals = useMemo(() => teams.map((team) => ({ ...team, amount: team.backers * 100 })), [teams]);
+  const refreshReceipt = useCallback(async (token: string) => {
+    const item = await apiRequest<BetReceipt | null>("/me/bet", {}, token);
+    if (!item) return;
+    setReceipt({ id: item.id, name: name || "Your entry", phone: "Private", team: item.team.id, code: item.mpesa_receipt_number || "Pending", status: item.status, time: item.confirmed_at ? new Date(item.confirmed_at).toLocaleString() : "Processing" });
+  }, [name]);
+
+  const refreshChat = useCallback(async (token: string) => {
+    const items = await apiRequest<ChatItem[]>("/chat", {}, token);
+    setMessages(items.map((item, index) => ({ name: item.name.split(" ")[0], initials: item.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), text: item.message, time: new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), color: ["coral", "blue", "gold", "green"][index % 4] })));
+  }, []);
+
+  const loadAdmin = useCallback(async (token: string) => {
+    const overview = await apiRequest<AdminOverview>("/admin/overview", {}, token);
+    setRegistrations(overview.registrations.map((item) => ({ id: item.id, betId: item.bet?.id, name: item.name, phone: item.phone_number, team: item.bet?.team_id || 0, code: item.bet?.mpesa_receipt_number || "—", status: item.bet?.status || "pending", time: new Date(item.created_at).toLocaleString() })));
+    setWinner(overview.settings.winner_team_id);
+  }, []);
+
+  useEffect(() => {
+    const participant = localStorage.getItem("final-pool-token");
+    const admin = sessionStorage.getItem("final-pool-admin-token");
+    if (participant) {
+      setAuthToken(participant);
+      apiRequest<{ name: string }>("/auth/me", {}, participant)
+        .then((profile) => { setName(profile.name); return refreshReceipt(participant); })
+        .catch(() => { localStorage.removeItem("final-pool-token"); setAuthToken(null); });
+    }
+    if (admin) { setAdminToken(admin); setAdminUnlocked(true); loadAdmin(admin).catch(() => sessionStorage.removeItem("final-pool-admin-token")); }
+    refreshPool();
+  }, [loadAdmin, refreshPool, refreshReceipt]);
+
+  useEffect(() => {
+    if (!authToken || !receipt || !["pending", "processing"].includes(receipt.status)) return;
+    const timer = setInterval(() => { refreshReceipt(authToken).then(refreshPool).catch(() => undefined); }, 4000);
+    return () => clearInterval(timer);
+  }, [authToken, receipt, refreshPool, refreshReceipt]);
+
+  const confirmed = poolState?.confirmed_entries || 0;
+  const totalPool = poolState?.total_pool || 0;
+  const teamTotals = useMemo(() => teams, [teams]);
 
   const navigate = (next: View) => {
     setView(next);
     setMobileOpen(false);
+    if (next === "chat" && authToken) refreshChat(authToken).catch(() => undefined);
+    if (next === "admin" && adminToken) loadAdmin(adminToken).catch(() => undefined);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const beginPick = (id: "a" | "b") => {
+  const beginPick = (id: number) => {
     setSelected(id);
     setStep(2);
     navigate("play");
   };
 
-  const submitRegistration = (e: FormEvent) => {
+  const submitRegistration = async (e: FormEvent) => {
     e.preventDefault();
     const valid = /^(07|01)\d{8}$/.test(phone.replace(/\s/g, ""));
     if (!name.trim() || !valid || !age || !terms) {
       setFormError("Add your name, a valid Safaricom number, and accept both checkboxes.");
       return;
     }
-    setFormError("");
-    setStep(2);
+    setFormError(""); setBusy(true);
+    try {
+      const result = await apiRequest<{ token: string; participant: { name: string } }>("/auth/register", { method: "POST", body: JSON.stringify({ full_name: name.trim(), phone_number: phone.replace(/\s/g, ""), age_confirmed: age, terms_accepted: terms }) });
+      localStorage.setItem("final-pool-token", result.token);
+      setAuthToken(result.token); setName(result.participant.name); setStep(2);
+    } catch (error) { setFormError(error instanceof ApiError ? error.message : "Registration failed."); }
+    finally { setBusy(false); }
   };
 
-  const submitPayment = (e: FormEvent) => {
+  const submitPayment = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selected) { setFormError("Choose a finalist before submitting your payment."); return; }
-    if (!/^[A-Z0-9]{8,12}$/i.test(code.trim())) { setFormError("Enter the 10-character M-Pesa confirmation code from your message."); return; }
-    const cleanPhone = phone.replace(/\s/g, "");
-    const item: Registration = {
-      name: name || "Demo Player",
-      phone: cleanPhone ? `254${cleanPhone.slice(1, 3)}•••••${cleanPhone.slice(-3)}` : "2547•••••000",
-      team: selected,
-      code: code.toUpperCase(),
-      status: "pending",
-      time: "Just now",
-    };
-    setReceipt(item);
-    setRegistrations((current) => [item, ...current]);
-    localStorage.setItem("final-pool-receipt", JSON.stringify(item));
-    setFormError("");
-    navigate("receipt");
+    if (!selected || !authToken) { setFormError("Register and choose a finalist before requesting payment."); return; }
+    setBusy(true); setFormError("");
+    try {
+      await apiRequest<{ id: string; status: string; message: string }>("/bets", { method: "POST", body: JSON.stringify({ team_id: selected }) }, authToken);
+      await refreshReceipt(authToken); await refreshPool(); navigate("receipt");
+    } catch (error) { setFormError(error instanceof Error ? error.message : "The STK Push could not be started."); }
+    finally { setBusy(false); }
   };
 
-  const sendMessage = (e: FormEvent) => {
+  const sendMessage = async (e: FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
-    setMessages((current) => [...current, { name: name.split(" ")[0] || "You", initials: name ? name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() : "YO", text: message.trim(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), color: "green" }]);
-    setMessage("");
+    if (!message.trim() || !authToken) { setFormError("Register before joining the chat."); return; }
+    try { await apiRequest<ChatItem>("/chat", { method: "POST", body: JSON.stringify({ message: message.trim() }) }, authToken); setMessage(""); await refreshChat(authToken); }
+    catch (error) { setFormError(error instanceof Error ? error.message : "Message failed."); }
   };
 
-  const loginAdmin = (e: FormEvent) => {
+  const loginAdmin = async (e: FormEvent) => {
     e.preventDefault();
-    if (passcode.toUpperCase() === "FINAL26") setAdminUnlocked(true);
-    else setFormError("That passcode doesn't match. Use FINAL26 for this preview.");
+    setBusy(true); setFormError("");
+    try {
+      const result = await apiRequest<{ token: string }>("/admin/login", { method: "POST", body: JSON.stringify({ email: adminEmail, password: passcode }) });
+      sessionStorage.setItem("final-pool-admin-token", result.token); setAdminToken(result.token); setAdminUnlocked(true); await loadAdmin(result.token);
+    } catch (error) { setFormError(error instanceof Error ? error.message : "Admin login failed."); }
+    finally { setBusy(false); }
   };
 
-  const saveTeams = () => {
-    const next = teams.map((team, index) => ({ ...team, name: draftNames[index].trim() || team.name }));
-    setTeams(next);
-    localStorage.setItem("final-pool-teams", JSON.stringify(next));
-    setEditingTeams(false);
+  const saveTeams = async () => {
+    if (!adminToken) return;
+    try { await apiRequest("/admin/teams", { method: "PUT", body: JSON.stringify({ teams: teams.map((team, index) => ({ id: team.id, name: draftNames[index].trim() || team.name, route: team.route })) }) }, adminToken); await refreshPool(); setEditingTeams(false); }
+    catch (error) { setFormError(error instanceof Error ? error.message : "Could not update teams."); }
   };
 
-  const markWinner = () => {
+  const markWinner = async () => {
     if (!winnerCandidate) return;
     const candidate = teams.find((team) => team.id === winnerCandidate)!;
     if (confirmText.trim().toLowerCase() !== candidate.name.toLowerCase()) return;
-    setWinner(winnerCandidate);
-    setWinnerCandidate(null);
-    setConfirmText("");
+    if (!adminToken) return;
+    try { await apiRequest("/admin/settle", { method: "POST", body: JSON.stringify({ winner_team_id: winnerCandidate }) }, adminToken); setWinner(winnerCandidate); setWinnerCandidate(null); setConfirmText(""); await refreshPool(); await loadAdmin(adminToken); }
+    catch (error) { setFormError(error instanceof Error ? error.message : "Settlement failed."); }
   };
 
-  const teamName = (id: "a" | "b") => teams.find((team) => team.id === id)?.name || id;
+  const confirmBet = async (item: Registration) => {
+    if (!adminToken || !item.betId) return;
+    const receiptCode = window.prompt("Enter the M-Pesa receipt number you verified:");
+    if (!receiptCode) return;
+    try { await apiRequest(`/admin/bets/${item.betId}/confirm`, { method: "POST", body: JSON.stringify({ mpesa_receipt_number: receiptCode }) }, adminToken); await loadAdmin(adminToken); await refreshPool(); }
+    catch (error) { setFormError(error instanceof Error ? error.message : "Manual confirmation failed."); }
+  };
+
+  const teamName = (id: number) => teams.find((team) => team.id === id)?.name || `Team ${id}`;
 
   return (
     <main>
@@ -201,7 +248,7 @@ export default function PoolPage() {
         <nav className={mobileOpen ? "nav nav-open" : "nav"}>
           <button className={view === "home" ? "active" : ""} onClick={() => navigate("home")}>Pool</button>
           <button className={view === "play" ? "active" : ""} onClick={() => navigate("play")}>Place a bet</button>
-          <button className={view === "chat" ? "active" : ""} onClick={() => navigate("chat")}>Chat <span className="nav-dot">3</span></button>
+          <button className={view === "chat" ? "active" : ""} onClick={() => navigate("chat")}>Chat {messages.length > 0 && <span className="nav-dot">{messages.length}</span>}</button>
           {receipt && <button className={view === "receipt" ? "active" : ""} onClick={() => navigate("receipt")}>My receipt</button>}
           <button className={view === "admin" ? "active" : ""} onClick={() => navigate("admin")}><LockKeyhole size={14} /> Admin</button>
         </nav>
@@ -210,6 +257,7 @@ export default function PoolPage() {
           <button className="mobile-menu" aria-label={mobileOpen ? "Close menu" : "Open menu"} onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X /> : <Menu />}</button>
         </div>
       </header>
+      {apiNotice && <div className="api-banner" role="status" aria-live="polite"><CircleAlert size={16} /><span>{apiNotice}</span><button onClick={refreshPool}>Retry</button></div>}
 
       {view === "home" && (
         <>
@@ -220,7 +268,7 @@ export default function PoolPage() {
               <p>Pick the champion, back your call with KES 100, and share the pool if your side lifts the trophy.</p>
               <div className="hero-actions">
                 <button className="primary-button" onClick={() => navigate("play")}>Make your pick <ArrowRight size={18} /></button>
-                <span className="micro-proof"><ShieldCheck size={18} /> Manual M-Pesa verification</span>
+                <span className="micro-proof"><ShieldCheck size={18} /> Safaricom callback verified</span>
               </div>
             </div>
             <div className="hero-art" aria-label="Final match illustration">
@@ -252,14 +300,14 @@ export default function PoolPage() {
                 <article className="team-card" key={team.id} style={{ "--team": team.color, "--team2": team.color2 } as React.CSSProperties}>
                   <div className="team-wash" />
                   <div className="team-top"><span className="team-seed">0{index + 1}</span><span className="trend"><Flame size={14} /> {index === 0 ? "Leading" : "Underdog"}</span></div>
-                  <div className="team-crest">{team.id.toUpperCase()}<small>FINALIST</small></div>
+                  <div className="team-crest">{team.code}<small>FINALIST</small></div>
                   <div className="team-info"><span>{team.route}</span><h3>{team.name}</h3></div>
                   <div className="team-stats"><div><strong>{team.backers}</strong><small>BACKERS</small></div><div><strong>{money.format(team.amount)}</strong><small>STAKED</small></div></div>
                   <button onClick={() => beginPick(team.id)}>Back {team.name} <ArrowRight size={17} /></button>
                 </article>
               ))}
             </div>
-            <div className="share-bar"><div className="split-bar"><span style={{ width: `${Math.round((teams[0].backers / (teams[0].backers + teams[1].backers)) * 100)}%` }} /></div><span>{Math.round((teams[0].backers / (teams[0].backers + teams[1].backers)) * 100)}% of the office is backing {teams[0].name}</span></div>
+            <div className="share-bar"><div className="split-bar"><span style={{ width: `${teams[0].backers + teams[1].backers ? Math.round((teams[0].backers / (teams[0].backers + teams[1].backers)) * 100) : 50}%` }} /></div><span>{teams[0].backers + teams[1].backers ? `${Math.round((teams[0].backers / (teams[0].backers + teams[1].backers)) * 100)}% of the office is backing ${teams[0].name}` : "Be the first confirmed backer"}</span></div>
           </section>
 
           <section className="countdown-section">
@@ -282,7 +330,7 @@ export default function PoolPage() {
 
       {view === "play" && (
         <section className="app-page content-shell">
-          <div className="page-intro"><div className="eyebrow dark">YOUR ENTRY</div><h1>Make your call.</h1><p>Registration takes a minute. Your pick only counts after the organiser verifies your M-Pesa code.</p></div>
+          <div className="page-intro"><div className="eyebrow dark">YOUR ENTRY</div><h1>Make your call.</h1><p>Registration takes a minute. Your pick only counts after Safaricom confirms the M-Pesa payment.</p></div>
           <div className="stepper"><span className={step >= 1 ? "done" : ""}><i>{step > 1 ? <Check /> : "1"}</i> Register</span><b /><span className={step >= 2 ? "done" : ""}><i>2</i> Pick a team</span><b /><span className={step >= 3 ? "done" : ""}><i>3</i> Pay</span></div>
           {step === 1 ? (
             <div className="form-layout">
@@ -292,8 +340,8 @@ export default function PoolPage() {
                 <label>Safaricom M-Pesa number<div className="phone-input"><span>KE +254</span><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" /></div><small>We encrypt this and never display it publicly.</small></label>
                 <label className="check-row"><input type="checkbox" checked={age} onChange={(e) => setAge(e.target.checked)} /><span>I confirm that I am 18 or older.</span></label>
                 <label className="check-row"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>I accept the pool rules: one entry, no refunds after close, and pooled payouts.</span></label>
-                {formError && <div className="form-error"><CircleAlert /> {formError}</div>}
-                <button className="primary-button full" type="submit">Continue to teams <ArrowRight /></button>
+                {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
+                <button className="primary-button full" type="submit" disabled={busy}>{busy ? "Registering…" : "Continue to teams"} <ArrowRight /></button>
               </form>
               <aside className="rules-card"><ShieldCheck /><h3>Your details stay private</h3><p>Only the organiser can see your number. Public pool totals and chat use first names only.</p><hr /><h4>Quick rules</h4><ul><li>One confirmed entry per phone</li><li>KES 100 fixed stake</li><li>Entries close at kickoff</li><li>Manual payout after review</li></ul></aside>
             </div>
@@ -302,15 +350,15 @@ export default function PoolPage() {
               <form className="paper-card form-card" onSubmit={submitPayment}>
                 <div className="card-title"><span><Trophy /></span><div><small>STEPS 02 + 03</small><h2>Pick, pay, submit</h2></div></div>
                 <div className="mini-team-grid">
-                  {teams.map((team) => <button type="button" key={team.id} className={selected === team.id ? "mini-team selected" : "mini-team"} onClick={() => setSelected(team.id)} style={{ "--team": team.color } as React.CSSProperties}><span>{team.id.toUpperCase()}</span><div><small>{team.route}</small><strong>{team.name}</strong></div>{selected === team.id && <BadgeCheck />}</button>)}
+                  {teams.map((team) => <button type="button" key={team.id} className={selected === team.id ? "mini-team selected" : "mini-team"} onClick={() => setSelected(team.id)} style={{ "--team": team.color } as React.CSSProperties}><span>{team.code}</span><div><small>{team.route}</small><strong>{team.name}</strong></div>{selected === team.id && <BadgeCheck />}</button>)}
                 </div>
-                <div className="pay-instruction"><div><small>SEND EXACTLY</small><strong>KES 100</strong></div><ArrowRight /><div><small>M-PESA TILL</small><strong>555 019</strong></div></div>
-                <label>M-Pesa confirmation code<input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. SGQ4T2M8KU" maxLength={12} /><small>Paste the code from your M-Pesa confirmation message.</small></label>
-                {formError && <div className="form-error"><CircleAlert /> {formError}</div>}
-                <button className="primary-button full" type="submit">Submit for verification <ShieldCheck /></button>
+                <div className="pay-instruction"><div><small>PAY EXACTLY</small><strong>{money.format(poolState?.entry_fee || 100)}</strong></div><ArrowRight /><div><small>ON YOUR PHONE</small><strong>STK PUSH</strong></div></div>
+                <div className="stk-explainer"><ShieldCheck /><span><strong>Safaricom confirms the payment.</strong> Keep your phone nearby, enter your M-Pesa PIN on the secure prompt, and wait for this page to update.</span></div>
+                {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
+                <button className="primary-button full" type="submit" disabled={busy}>{busy ? "Sending prompt…" : "Send M-Pesa prompt"} <ShieldCheck /></button>
                 <button className="back-link" type="button" onClick={() => setStep(1)}>← Back to registration</button>
               </form>
-              <aside className="rules-card amber"><Clock3 /><h3>Why verification?</h3><p>A submitted code starts as pending. The organiser matches it against M-Pesa before your stake is added to the live pot.</p><div className="status-flow"><span>Submitted</span><ArrowRight /><span>Checked</span><ArrowRight /><span>Confirmed</span></div></aside>
+              <aside className="rules-card amber"><Clock3 /><h3>Callback verified</h3><p>Your bet starts as processing. Only Safaricom's server callback can add it to the live pot; clicking the button never counts as payment.</p><div className="status-flow"><span>Prompt</span><ArrowRight /><span>Callback</span><ArrowRight /><span>Confirmed</span></div></aside>
             </div>
           )}
         </section>
@@ -318,12 +366,12 @@ export default function PoolPage() {
 
       {view === "receipt" && (
         <section className="app-page content-shell receipt-page">
-          <div className="page-intro center"><div className="eyebrow dark">YOUR ENTRY</div><h1>{receipt ? "You're in the queue." : "No entry yet."}</h1><p>{receipt ? "Keep this receipt. We'll update the status when the organiser confirms payment." : "Register, choose a finalist, and submit your payment code first."}</p></div>
+          <div className="page-intro center"><div className="eyebrow dark">YOUR ENTRY</div><h1>{receipt?.status === "confirmed" ? "Your bet is confirmed." : receipt && ["failed", "cancelled", "timeout"].includes(receipt.status) ? "Payment was not confirmed." : receipt ? "Payment is processing." : "No entry yet."}</h1><p>{receipt ? "This page checks the callback automatically. A failed, cancelled, or timed-out prompt can be retried from Place a bet." : "Register, choose a finalist, and approve the M-Pesa prompt first."}</p></div>
           {receipt ? <div className="receipt-card">
             <div className="receipt-head"><Mark /><div><strong>THE FINAL WHISTLE</strong><small>OFFICE POOL RECEIPT</small></div><span className={`status-pill ${receipt.status}`}><i /> {receipt.status}</span></div>
-            <div className="receipt-team" style={{ "--team": teams.find((t) => t.id === receipt.team)?.color } as React.CSSProperties}><span>{receipt.team.toUpperCase()}</span><div><small>YOUR PICK</small><h2>{teamName(receipt.team)}</h2></div><Trophy /></div>
-            <div className="receipt-details"><div><small>NAME</small><strong>{receipt.name}</strong></div><div><small>STAKE</small><strong>KES 100</strong></div><div><small>M-PESA CODE</small><strong>{receipt.code}</strong></div><div><small>SUBMITTED</small><strong>{receipt.time}</strong></div></div>
-            <div className="receipt-note"><Clock3 /><span><strong>Awaiting organiser review.</strong> Pending entries are not counted in the live pool yet.</span></div>
+            <div className="receipt-team" style={{ "--team": teams.find((t) => t.id === receipt.team)?.color } as React.CSSProperties}><span>{teams.find((t) => t.id === receipt.team)?.code || "?"}</span><div><small>YOUR PICK</small><h2>{teamName(receipt.team)}</h2></div><Trophy /></div>
+            <div className="receipt-details"><div><small>NAME</small><strong>{receipt.name}</strong></div><div><small>STAKE</small><strong>{money.format(poolState?.entry_fee || 100)}</strong></div><div><small>M-PESA RECEIPT</small><strong>{receipt.code}</strong></div><div><small>STATUS UPDATED</small><strong>{receipt.time}</strong></div></div>
+            <div className="receipt-note"><Clock3 /><span><strong>{receipt.status === "confirmed" ? "Safaricom confirmed your payment." : ["failed", "cancelled", "timeout"].includes(receipt.status) ? "This payment did not complete." : "Waiting for Safaricom."}</strong> {receipt.status === "confirmed" ? "Your stake is included in the live pool." : ["failed", "cancelled", "timeout"].includes(receipt.status) ? "No money has been added to the pool. Return to Place a bet to try again." : "Processing entries are not counted in the live pool yet."}</span></div>
             <button className="outline-button full" onClick={() => { navigator.clipboard?.writeText(`Final Whistle receipt · ${receipt.code}`); setCopied(true); setTimeout(() => setCopied(false), 1500); }}><Copy /> {copied ? "Copied" : "Copy receipt code"}</button>
           </div> : <button className="primary-button centered" onClick={() => navigate("play")}>Create my entry <ArrowRight /></button>}
         </section>
@@ -345,28 +393,28 @@ export default function PoolPage() {
       {view === "admin" && !adminUnlocked && (
         <section className="app-page content-shell admin-login">
           <div className="login-emblem"><LockKeyhole /></div><div className="eyebrow dark">ORGANISER ACCESS</div><h1>Admin room</h1><p>Review payments, edit the finalists, and safely settle the pool.</p>
-          <form className="paper-card" onSubmit={loginAdmin}><label>Admin passcode<div className="password-input"><input type={showPasscode ? "text" : "password"} value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="Enter passcode" /><button type="button" onClick={() => setShowPasscode(!showPasscode)}>{showPasscode ? <EyeOff /> : <Eye />}</button></div></label>{formError && <div className="form-error"><CircleAlert /> {formError}</div>}<button className="primary-button full">Unlock dashboard <ArrowRight /></button><small className="demo-hint">Preview passcode: FINAL26</small></form>
+          <form className="paper-card" onSubmit={loginAdmin}><label>Admin email<input type="email" autoComplete="username" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@example.com" /></label><label>Admin password<div className="password-input"><input type={showPasscode ? "text" : "password"} autoComplete="current-password" value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="Enter password" /><button type="button" aria-label={showPasscode ? "Hide password" : "Show password"} onClick={() => setShowPasscode(!showPasscode)}>{showPasscode ? <EyeOff /> : <Eye />}</button></div></label>{formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}<button className="primary-button full" disabled={busy}>{busy ? "Checking…" : "Unlock dashboard"} <ArrowRight /></button></form>
         </section>
       )}
 
       {view === "admin" && adminUnlocked && (
         <section className="admin-page">
-          <aside className="admin-rail"><div className="admin-brand"><Mark small /><strong>FINAL<br />WHISTLE</strong></div><button className="selected"><LayoutDashboard /> Overview</button><button><UsersRound /> Entries</button><button><Banknote /> Payouts</button><button><MessageCircle /> Chat</button><span /><button onClick={() => setAdminUnlocked(false)}><LogOut /> Lock room</button></aside>
+          <aside className="admin-rail"><div className="admin-brand"><Mark small /><strong>FINAL<br />WHISTLE</strong></div><button className="selected"><LayoutDashboard /> Overview</button><button><UsersRound /> Entries</button><button><Banknote /> Payouts</button><button><MessageCircle /> Chat</button><span /><button onClick={() => { sessionStorage.removeItem("final-pool-admin-token"); setAdminToken(null); setAdminUnlocked(false); }}><LogOut /> Lock room</button></aside>
           <div className="admin-main">
-            <div className="admin-heading"><div><small>THURSDAY, 16 JULY</small><h1>Good evening, organiser.</h1><p>Everything looks healthy. One payment needs your attention.</p></div><button className="outline-button" onClick={() => setEditingTeams(true)}><PencilLine /> Edit matchup</button></div>
-            <div className="admin-stats"><div><span className="icon green"><UsersRound /></span><small>CONFIRMED</small><strong>{confirmed}</strong><em>+6 today</em></div><div><span className="icon blue"><Banknote /></span><small>TOTAL POOL</small><strong>{money.format(totalPool)}</strong><em>100% allocated</em></div><div><span className="icon amber"><Clock3 /></span><small>NEEDS REVIEW</small><strong>{registrations.filter((r) => r.status === "pending").length}</strong><em>Check M-Pesa</em></div><div><span className="icon coral"><Trophy /></span><small>TIME TO CLOSE</small><strong>{countdown.days}d {countdown.hours}h</strong><em>Automatic lock</em></div></div>
+            <div className="admin-heading"><div><small>{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}</small><h1>Organiser dashboard.</h1><p>Live registrations, callback statuses, and settlement controls.</p></div><button className="outline-button" onClick={() => setEditingTeams(true)}><PencilLine /> Edit matchup</button></div>
+            <div className="admin-stats"><div><span className="icon green"><UsersRound /></span><small>CONFIRMED</small><strong>{confirmed}</strong><em>Callback verified</em></div><div><span className="icon blue"><Banknote /></span><small>TOTAL POOL</small><strong>{money.format(totalPool)}</strong><em>Confirmed only</em></div><div><span className="icon amber"><Clock3 /></span><small>NEEDS REVIEW</small><strong>{registrations.filter((r) => r.status !== "confirmed").length}</strong><em>Reconcile carefully</em></div><div><span className="icon coral"><Trophy /></span><small>TIME TO CLOSE</small><strong>{countdown.days}d {countdown.hours}h</strong><em>Automatic lock</em></div></div>
             <div className="admin-grid">
               <div className="admin-panel registrations"><div className="panel-heading"><div><h2>Recent entries</h2><p>Payment status and private reconciliation view.</p></div><button><MoreHorizontal /></button></div>
-                <div className="table-wrap"><table><thead><tr><th>PLAYER</th><th>PICK</th><th>M-PESA CODE</th><th>STATUS</th><th /></tr></thead><tbody>{registrations.map((item, index) => <tr key={`${item.code}-${index}`}><td><strong>{item.name}</strong><small>{item.phone} · {item.time}</small></td><td><span className={`pick-dot team-${item.team}`} /> {teamName(item.team)}</td><td>{item.code}</td><td><span className={`status-pill ${item.status}`}><i /> {item.status}</span></td><td>{item.status === "pending" ? <button className="confirm-btn" onClick={() => setRegistrations((items) => items.map((entry) => entry === item ? { ...entry, status: "confirmed" } : entry))}>Confirm</button> : <button className="dots"><MoreHorizontal /></button>}</td></tr>)}</tbody></table></div>
+                <div className="table-wrap"><table><thead><tr><th>PLAYER</th><th>PICK</th><th>M-PESA CODE</th><th>STATUS</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{registrations.map((item, index) => <tr key={`${item.id}-${index}`}><td><strong>{item.name}</strong><small>{item.phone} · {item.time}</small></td><td><span className={`pick-dot team-${teams.find((team) => team.id === item.team)?.code.toLowerCase() || "none"}`} /> {item.team ? teamName(item.team) : "No pick"}</td><td>{item.code}</td><td><span className={`status-pill ${item.status}`}><i /> {item.status}</span></td><td>{item.betId && item.status !== "confirmed" ? <button className="confirm-btn" onClick={() => confirmBet(item)}>Confirm</button> : <span className="dots" aria-label="No action available"><MoreHorizontal /></span>}</td></tr>)}</tbody></table></div>
               </div>
-              <div className="admin-panel settle-panel"><div className="panel-heading"><div><h2>Settle the final</h2><p>Only after the official result.</p></div><ShieldCheck /></div>{winner ? <div className="settled"><Crown /><h3>{teamName(winner)}</h3><p>Winner recorded. {money.format(totalPool / teams.find((t) => t.id === winner)!.backers)} per confirmed backer.</p></div> : <><div className="settle-warning"><CircleAlert /><span>This action calculates payouts and publishes the result to every participant.</span></div><small className="field-label">SELECT WINNING TEAM</small>{teams.map((team) => <button className="winner-choice" key={team.id} onClick={() => { setWinnerCandidate(team.id); setConfirmText(""); }}><span style={{ background: team.color }}>{team.id.toUpperCase()}</span><div><small>{team.route}</small><strong>{team.name}</strong></div><ArrowRight /></button>)}</>}</div>
+              <div className="admin-panel settle-panel"><div className="panel-heading"><div><h2>Settle the final</h2><p>Only after the official result.</p></div><ShieldCheck /></div>{winner ? <div className="settled"><Crown /><h3>{teamName(winner)}</h3><p>Winner recorded. The server generated the reviewed payout list.</p></div> : <><div className="settle-warning"><CircleAlert /><span>This action calculates payouts and publishes the result to every participant.</span></div><small className="field-label">SELECT WINNING TEAM</small>{teams.map((team) => <button className="winner-choice" key={team.id} onClick={() => { setWinnerCandidate(team.id); setConfirmText(""); }}><span style={{ background: team.color }}>{team.code}</span><div><small>{team.route}</small><strong>{team.name}</strong></div><ArrowRight /></button>)}</>}</div>
             </div>
           </div>
         </section>
       )}
 
-      {editingTeams && <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={() => setEditingTeams(false)}><X /></button><PencilLine className="modal-icon" /><h2>Edit the matchup</h2><p>Update these names once the finalists are official. Every participant view changes immediately.</p>{teams.map((team, index) => <label key={team.id}>Finalist {team.id.toUpperCase()}<input value={draftNames[index]} onChange={(e) => setDraftNames((current) => current.map((value, i) => i === index ? e.target.value : value))} /></label>)}<button className="primary-button full" onClick={saveTeams}>Save matchup <Check /></button></div></div>}
-      {winnerCandidate && <div className="modal-backdrop"><div className="modal danger-modal"><button className="modal-close" onClick={() => setWinnerCandidate(null)}><X /></button><CircleAlert className="modal-icon" /><h2>Confirm the champion</h2><p>This publishes the result and calculates payouts. Type <strong>{teamName(winnerCandidate)}</strong> to continue.</p><label>Winning team<input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={teamName(winnerCandidate)} /></label><button className="danger-button full" disabled={confirmText.trim().toLowerCase() !== teamName(winnerCandidate).toLowerCase()} onClick={markWinner}>Declare winner & calculate</button></div></div>}
+      {editingTeams && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="edit-matchup-title"><button className="modal-close" aria-label="Close edit matchup dialog" onClick={() => setEditingTeams(false)}><X /></button><PencilLine className="modal-icon" /><h2 id="edit-matchup-title">Edit the matchup</h2><p>Update these names once the finalists are official. Every participant view changes immediately.</p>{teams.map((team, index) => <label key={team.id}>Finalist {team.code}<input value={draftNames[index]} onChange={(e) => setDraftNames((current) => current.map((value, i) => i === index ? e.target.value : value))} /></label>)}<button className="primary-button full" onClick={saveTeams}>Save matchup <Check /></button></div></div>}
+      {winnerCandidate && <div className="modal-backdrop"><div className="modal danger-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-champion-title"><button className="modal-close" aria-label="Close winner confirmation dialog" onClick={() => setWinnerCandidate(null)}><X /></button><CircleAlert className="modal-icon" /><h2 id="confirm-champion-title">Confirm the champion</h2><p>This publishes the result and calculates payouts. Type <strong>{teamName(winnerCandidate)}</strong> to continue.</p><label>Winning team<input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={teamName(winnerCandidate)} /></label><button className="danger-button full" disabled={confirmText.trim().toLowerCase() !== teamName(winnerCandidate).toLowerCase()} onClick={markWinner}>Declare winner & calculate</button></div></div>}
 
       {view !== "admin" && <footer><div className="footer-brand"><Mark /><span><strong>THE FINAL</strong><small>WHISTLE</small></span></div><p>Built for colleagues, not the bookies. Play responsibly.</p><div><button>Pool rules</button><button>Privacy</button><span>© 2026</span></div></footer>}
     </main>

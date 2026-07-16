@@ -1,28 +1,62 @@
 # The Final Whistle
 
-A mobile-first interactive prototype for a private 2026 World Cup Final office pool.
+A self-hostable office World Cup final pool with a static Next.js frontend and a Laravel 12 + MySQL API.
 
-## Included
+## What is implemented
 
-- Public pool totals and match countdown
-- Participant registration with Kenyan Safaricom number validation
-- Editable finalist names and routes
-- Manual M-Pesa confirmation-code workflow
-- Pending receipt and private phone-number masking
-- Shared participant chat
-- Admin reconciliation dashboard
-- Double-confirm winner declaration and payout summary
-- Responsive desktop and mobile layouts
+- Participant registration with encrypted Safaricom phone numbers and one entry per phone
+- KES 100 M-Pesa STK Push using the same Daraja request pattern as `Peternyaga/shwapy`
+- Callback-only payment confirmation with checkout ID, amount, phone, and receipt validation
+- Live team totals, private receipts, participant chat, and admin reconciliation
+- Automatic betting cutoff and immutable confirmed picks
+- Admin winner declaration and deterministic whole-shilling payout calculation
+- Audit logging, Sanctum bearer tokens, throttling, CORS, and production environment controls
+- Responsive and keyboard-friendly frontend with live status messages
 
-## Run locally
+## Project layout
+
+```text
+app/                 Next.js frontend
+lib/api.ts           Frontend API client and types
+backend/             Laravel API, database migrations, M-Pesa services, and tests
+dist/                Generated static frontend after npm run build
+DEPLOYMENT.md         Complete local and production setup guide
+```
+
+## Quick local start
+
+You need Node.js 20+, PHP 8.2+, Composer, and MySQL 8+.
 
 ```bash
+# Terminal 1: API
+cd backend
+composer install
+cp .env.example .env
+php artisan key:generate
+# Fill in the database, admin, and M-Pesa values in .env
+php artisan migrate --seed
+php artisan serve
+
+# Terminal 2: frontend
+cd ..
+cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-The preview admin passcode is `FINAL26`.
+Open `http://localhost:3000`. The API runs at `http://localhost:8000`.
 
-## Production note
+For the exact M-Pesa variables, public callback requirements, cPanel/VPS deployment steps, and go-live checklist, read [DEPLOYMENT.md](DEPLOYMENT.md).
 
-This version is intentionally a safe interactive prototype. Its demo data and browser storage must be replaced with authenticated server-side persistence before collecting real payments or personal data. The refined brief recommends PHP + MySQL; the same interface can be connected to that backend, or rebuilt with a managed database and server routes on a compatible host.
+## Verification
+
+```bash
+npm run lint
+npm run build
+
+cd backend
+php artisan test
+vendor/bin/pint --test
+```
+
+Never commit either `.env` file or expose the Daraja passkey, consumer secret, Laravel `APP_KEY`, database password, or admin password.
