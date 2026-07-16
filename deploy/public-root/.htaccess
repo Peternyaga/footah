@@ -1,5 +1,10 @@
 Options -Indexes -MultiViews
 
+# Run this application with PHP 8.3 without changing the main domain's PHP version.
+<IfModule mime_module>
+    AddHandler application/x-httpd-ea-php83 .php .phtml
+</IfModule>
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
