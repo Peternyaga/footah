@@ -185,6 +185,17 @@ class PoolFlowTest extends TestCase
         $this->assertDatabaseHas('pool_settings', ['status' => PoolSetting::STATUS_SETTLED, 'winner_team_id' => $this->teamA->id]);
     }
 
+    public function test_repeated_deployment_seeding_preserves_admin_edited_teams(): void
+    {
+        $this->teamA->update(['name' => 'Official Finalist']);
+
+        $this->seed();
+
+        $this->assertDatabaseHas('teams', ['code' => 'A', 'name' => 'Official Finalist']);
+        $this->assertDatabaseCount('teams', 2);
+        $this->assertDatabaseCount('pool_settings', 1);
+    }
+
     private function registerParticipant(string $name, string $phone): string
     {
         return (string) $this->postJson('/api/auth/register', [

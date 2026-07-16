@@ -1,0 +1,136 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, test, and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ vars.FRONTEND_URL }}
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      KEEP_RELEASES: ${{ vars.KEEP_RELEASES || '5' }}
+      FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+      NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+
+    steps:
+      - name: Validate deployment configuration
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PORT DEPLOY_PATH KEEP_RELEASES FRONTEND_URL NEXT_PUBLIC_API_BASE_URL DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS BACKEND_ENV; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing GitHub production environment value: ${name}" >&2
+              exit 1
+            fi
+          done
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "DEPLOY_HOST contains unsupported characters." >&2; exit 1; }
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "DEPLOY_USER contains unsupported characters." >&2; exit 1; }
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]] || { echo "DEPLOY_PORT must be numeric." >&2; exit 1; }
+          [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "DEPLOY_PATH must be a safe absolute Linux path." >&2; exit 1; }
+          [ "$DEPLOY_PATH" != "/" ] || { echo "DEPLOY_PATH cannot be root." >&2; exit 1; }
+          [[ "$KEEP_RELEASES" =~ ^[1-9][0-9]*$ ]] || { echo "KEEP_RELEASES must be a positive integer." >&2; exit 1; }
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ vars.NODE_VERSION || '20' }}
+          cache: npm
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ vars.PHP_VERSION || '8.3' }}
+          extensions: ctype, curl, fileinfo, mbstring, openssl, pdo_mysql, pdo_sqlite, sqlite3, tokenizer, xml
+          coverage: none
+          tools: composer:v2
+
+      - name: Install and verify frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Install and verify backend
+        working-directory: backend
+        run: |
+          composer install --prefer-dist --no-interaction --no-progress
+          php artisan test
+          vendor/bin/pint --test
+          composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-progress
+
+      - name: Package release
+        run: |
+          set -euo pipefail
+          RELEASE_ID="${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ARCHIVE="final-whistle-${RELEASE_ID}.tar.gz"
+          mkdir -p package/frontend package/backend
+          cp -a dist/assets/. package/frontend/
+          rsync -a backend/ package/backend/ \
+            --exclude='.env' \
+            --exclude='database/*.sqlite*' \
+            --exclude='node_modules' \
+            --exclude='tests'
+          tar -C package -czf "$ARCHIVE" frontend backend
+          echo "RELEASE_ID=$RELEASE_ID" >> "$GITHUB_ENV"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+
+      - name: Upload release and production environment
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i "$HOME/.ssh/deploy_key" -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes)
+          SCP=(scp -i "$HOME/.ssh/deploy_key" -P "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes)
+          "${SCP[@]}" "$ARCHIVE" "$DEPLOY_USER@$DEPLOY_HOST:/tmp/$ARCHIVE"
+          printf '%s\n' "$BACKEND_ENV" | "${SSH[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "umask 077; mkdir -p '$DEPLOY_PATH/shared'; cat > '$DEPLOY_PATH/shared/backend.env'"
+
+      - name: Activate release
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/deploy_key" -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' RELEASE_ID='$RELEASE_ID' KEEP_RELEASES='$KEEP_RELEASES' bash -s" \
+            < .github/scripts/activate-release.sh
+
+      - name: Check deployed sites
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --retry 5 --retry-delay 3 "$FRONTEND_URL" > /dev/null
+          curl --fail --show-error --silent --retry 5 --retry-delay 3 "${NEXT_PUBLIC_API_BASE_URL%/}/pool" > /dev/null
+          echo "Deployment health checks passed."

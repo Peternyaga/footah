@@ -48,6 +48,8 @@ Open `http://localhost:3000`. The API runs at `http://localhost:8000`.
 
 For the exact M-Pesa variables, public callback requirements, cPanel/VPS deployment steps, and go-live checklist, read [DEPLOYMENT.md](DEPLOYMENT.md).
 
+Pushes to `main` can deploy automatically through `.github/workflows/deploy.yml`. Configure the repository's `production` environment as described in the GitHub Actions section of [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Verification
 
 ```bash

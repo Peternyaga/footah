@@ -172,3 +172,98 @@ npm run build
 ```
 
 Upload the new `dist/assets/` contents and keep the existing production `.env` and `APP_KEY`. Changing `APP_KEY` makes previously encrypted phone numbers unreadable.
+
+## 8. GitHub Actions deployment
+
+The repository includes `.github/workflows/deploy.yml`. It runs tests, builds both applications, uploads an immutable release over SSH, runs Laravel migrations and the idempotent seeder, switches the `current` symlink atomically, retains recent releases, and checks both public URLs. It runs on pushes to `main` and can also be started manually.
+
+Create a GitHub Environment named `production` under **Settings → Environments**. Put the following non-sensitive values under **Environment variables**:
+
+| Variable | Example | Required | Purpose |
+| --- | --- | --- | --- |
+| `DEPLOY_HOST` | `203.0.113.10` or `server.example.com` | Yes | SSH server hostname; do not include a scheme |
+| `DEPLOY_USER` | `deploy` | Yes | Restricted SSH deployment user |
+| `DEPLOY_PORT` | `22` | No | SSH port; defaults to `22` |
+| `DEPLOY_PATH` | `/var/www/final-whistle` | Yes | Release root owned by the deployment user |
+| `FRONTEND_URL` | `https://pool.example.com` | Yes | Public frontend URL and deployment health check |
+| `NEXT_PUBLIC_API_BASE_URL` | `https://api.pool.example.com/api` | Yes | API URL compiled into the frontend |
+| `NODE_VERSION` | `20` | No | GitHub build version; defaults to `20` |
+| `PHP_VERSION` | `8.3` | No | GitHub build version; match the server PHP version |
+| `KEEP_RELEASES` | `5` | No | Number of releases retained for manual rollback |
+
+Add these under **Environment secrets**:
+
+| Secret | Required | Purpose |
+| --- | --- | --- |
+| `DEPLOY_SSH_KEY` | Yes | Private key for the restricted deployment user; use a dedicated key without an interactive passphrase |
+| `DEPLOY_KNOWN_HOSTS` | Yes | Verified OpenSSH `known_hosts` entry for the server, preventing host spoofing |
+| `BACKEND_ENV` | Yes | The complete multiline production Laravel `.env` file |
+
+`BACKEND_ENV` should contain at least:
+
+```dotenv
+APP_NAME="The Final Whistle API"
+APP_ENV=production
+APP_KEY=base64:generate-a-real-key
+APP_DEBUG=false
+APP_URL=https://api.pool.example.com
+LOG_CHANNEL=stack
+LOG_LEVEL=warning
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=final_whistle
+DB_USERNAME=final_whistle
+DB_PASSWORD=replace-with-the-production-database-password
+
+CACHE_STORE=database
+SESSION_DRIVER=database
+QUEUE_CONNECTION=database
+
+FRONTEND_URL=https://pool.example.com
+POOL_EVENT_NAME="2026 World Cup Final"
+POOL_ENTRY_FEE=100
+POOL_BETTING_CLOSES_AT="2026-07-19T22:00:00+03:00"
+POOL_COST_DEDUCTION=0
+
+ADMIN_NAME="Pool Organiser"
+ADMIN_EMAIL=you@example.com
+ADMIN_PASSWORD=replace-with-a-long-unique-password
+
+MPESA_ENV=live
+MPESA_CONSUMER_KEY=your-live-consumer-key
+MPESA_CONSUMER_SECRET=your-live-consumer-secret
+MPESA_SHORTCODE=your-live-shortcode
+MPESA_PASSKEY=your-live-passkey
+MPESA_PARTY_B=your-live-shortcode
+MPESA_TRANSACTION_TYPE=CustomerPayBillOnline
+MPESA_ACCOUNT_REFERENCE=FinalWhistle
+MPESA_CALLBACK_URL=https://api.pool.example.com/api/mpesa/callback
+MPESA_TIMEOUT=20
+```
+
+Generate `APP_KEY` once with `php artisan key:generate --show` and keep it unchanged across deployments and restores. Changing it prevents Laravel from decrypting stored phone numbers.
+
+### One-time server preparation
+
+The workflow assumes a Linux server with `bash`, `tar`, `find`, and PHP CLI 8.2+ plus the required extensions. As an administrator, prepare the release root and grant it to the restricted deployment user:
+
+```bash
+sudo mkdir -p /var/www/final-whistle/{releases,shared}
+sudo chown -R deploy:www-data /var/www/final-whistle
+sudo chmod -R 2775 /var/www/final-whistle
+```
+
+Configure the web server document roots as follows, then issue TLS certificates:
+
+```text
+pool.example.com      /var/www/final-whistle/current/frontend
+api.pool.example.com  /var/www/final-whistle/current/backend/public
+```
+
+The deployment user must be able to write inside `DEPLOY_PATH`; the PHP web-server user must be able to write to `shared/storage`. The database must already exist and accept connections from the API server. The first deployment creates all tables and the initial admin account.
+
+Create a dedicated SSH key locally, install only its public key in the deployment user's `~/.ssh/authorized_keys`, and save the private key as `DEPLOY_SSH_KEY`. Obtain the server's host-key line with `ssh-keyscan -p 22 server.example.com`, independently verify its fingerprint with your host/provider, and then save the verified line as `DEPLOY_KNOWN_HOSTS`.
+
+For stronger release control, add required reviewers and restrict deployment branches to `main` on the GitHub `production` environment. GitHub only exposes that environment's variables and secrets to a job after its protection rules pass.

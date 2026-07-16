@@ -13,8 +13,8 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        Team::updateOrCreate(['code' => 'A'], ['name' => 'Finalist A', 'route' => 'Winner · Spain vs France', 'color' => '#ef634d', 'color_secondary' => '#f0b24e', 'active' => true, 'display_order' => 1]);
-        Team::updateOrCreate(['code' => 'B'], ['name' => 'Finalist B', 'route' => 'Winner · England vs Argentina', 'color' => '#376fdc', 'color_secondary' => '#58c6ff', 'active' => true, 'display_order' => 2]);
+        Team::firstOrCreate(['code' => 'A'], ['name' => 'Finalist A', 'route' => 'Winner · Spain vs France', 'color' => '#ef634d', 'color_secondary' => '#f0b24e', 'active' => true, 'display_order' => 1]);
+        Team::firstOrCreate(['code' => 'B'], ['name' => 'Finalist B', 'route' => 'Winner · England vs Argentina', 'color' => '#376fdc', 'color_secondary' => '#58c6ff', 'active' => true, 'display_order' => 2]);
 
         PoolSetting::firstOrCreate(['id' => 1], [
             'event_name' => config('pool.event_name'),
