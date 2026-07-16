@@ -52,10 +52,10 @@ jobs:
           [[ "$KEEP_RELEASES" =~ ^[1-9][0-9]*$ ]] || { echo "KEEP_RELEASES must be a positive integer." >&2; exit 1; }
 
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ vars.NODE_VERSION || '20' }}
           cache: npm
