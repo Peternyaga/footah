@@ -4,13 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "build:worker": "opennextjs-cloudflare build",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "build": "next build && node scripts/prepare-dist.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "latest",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
@@ -20,7 +17,6 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "typescript": "^5.9.3",
-    "wrangler": "latest"
+    "typescript": "^5.9.3"
   }
 }
