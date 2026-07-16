@@ -94,8 +94,8 @@ mkdir -p "$RELEASE_DIR/backend/bootstrap/cache"
 chmod -R ug+rwX "$SHARED_DIR/storage" "$RELEASE_DIR/backend/bootstrap/cache"
 
 cd "$RELEASE_DIR/backend"
-"$PHP_BIN" artisan optimize:clear
 "$PHP_BIN" artisan migrate --seed --force
+"$PHP_BIN" artisan optimize:clear
 "$PHP_BIN" artisan config:cache
 "$PHP_BIN" artisan route:cache
 
