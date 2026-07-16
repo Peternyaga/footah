@@ -56,6 +56,8 @@ class PoolFlowTest extends TestCase
         $response = $this->postJson('/api/auth/register', [
             'full_name' => 'Peter Nyaga',
             'phone_number' => '0712 345 678',
+            'password' => 'correct-horse',
+            'password_confirmation' => 'correct-horse',
             'age_confirmed' => true,
             'terms_accepted' => true,
         ]);
@@ -72,9 +74,40 @@ class PoolFlowTest extends TestCase
         $this->postJson('/api/auth/register', [
             'full_name' => 'Duplicate Player',
             'phone_number' => '254712345678',
+            'password' => 'correct-horse',
+            'password_confirmation' => 'correct-horse',
             'age_confirmed' => true,
             'terms_accepted' => true,
         ])->assertConflict();
+    }
+
+    public function test_participant_can_log_in_with_their_phone_and_password(): void
+    {
+        $registration = $this->postJson('/api/auth/register', [
+            'full_name' => 'Peter Nyaga',
+            'phone_number' => '0712 345 678',
+            'password' => 'correct-horse',
+            'password_confirmation' => 'correct-horse',
+            'age_confirmed' => true,
+            'terms_accepted' => true,
+        ])->assertCreated();
+
+        $this->withToken((string) $registration->json('data.token'))
+            ->postJson('/api/auth/logout')
+            ->assertOk();
+
+        $this->postJson('/api/auth/login', [
+            'phone_number' => '+254 712 345 678',
+            'password' => 'correct-horse',
+        ])->assertOk()
+            ->assertJsonPath('data.participant.name', 'Peter Nyaga')
+            ->assertJsonStructure(['data' => ['token', 'participant']]);
+
+        $this->postJson('/api/auth/login', [
+            'phone_number' => '0712345678',
+            'password' => 'wrong-password',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'The phone number or password is incorrect.');
     }
 
     public function test_stk_push_is_confirmed_only_after_a_valid_callback(): void
@@ -201,6 +234,8 @@ class PoolFlowTest extends TestCase
         return (string) $this->postJson('/api/auth/register', [
             'full_name' => $name,
             'phone_number' => $phone,
+            'password' => 'correct-horse',
+            'password_confirmation' => 'correct-horse',
             'age_confirmed' => true,
             'terms_accepted' => true,
         ])->assertCreated()->json('data.token');

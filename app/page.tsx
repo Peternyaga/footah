@@ -35,6 +35,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AdminOverview, ApiError, BetReceipt, ChatItem, PoolState, apiRequest } from "../lib/api";
 
 type View = "home" | "play" | "chat" | "receipt" | "admin";
+type AuthMode = "register" | "login";
 type Team = { id: number; code: string; name: string; route: string; color: string; color2: string; backers: number; amount: number };
 type Registration = { id?: string; betId?: number; name: string; phone: string; team: number; code: string; status: BetReceipt["status"]; time: string };
 
@@ -50,12 +51,13 @@ const seededMessages: Array<{ name: string; initials: string; text: string; time
 const money = new Intl.NumberFormat("en-KE", { style: "currency", currency: "KES", maximumFractionDigits: 0 });
 
 function useCountdown(target: string) {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  const diff = Math.max(0, new Date(target).getTime() - now);
+  const diff = now === null ? 0 : Math.max(0, new Date(target).getTime() - now);
   return {
     days: Math.floor(diff / 86400000),
     hours: Math.floor((diff % 86400000) / 3600000),
@@ -78,6 +80,10 @@ export default function PoolPage() {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [showParticipantPassword, setShowParticipantPassword] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>("register");
   const [age, setAge] = useState(false);
   const [terms, setTerms] = useState(false);
   const [formError, setFormError] = useState("");
@@ -137,7 +143,7 @@ export default function PoolPage() {
     if (participant) {
       setAuthToken(participant);
       apiRequest<{ name: string }>("/auth/me", {}, participant)
-        .then((profile) => { setName(profile.name); return refreshReceipt(participant); })
+        .then((profile) => { setName(profile.name); setStep(2); return refreshReceipt(participant); })
         .catch(() => { localStorage.removeItem("final-pool-token"); setAuthToken(null); });
     }
     if (admin) { setAdminToken(admin); setAdminUnlocked(true); loadAdmin(admin).catch(() => sessionStorage.removeItem("final-pool-admin-token")); }
@@ -164,24 +170,47 @@ export default function PoolPage() {
 
   const beginPick = (id: number) => {
     setSelected(id);
-    setStep(2);
+    setStep(authToken ? 2 : 1);
     navigate("play");
   };
 
   const submitRegistration = async (e: FormEvent) => {
     e.preventDefault();
     const valid = /^(07|01)\d{8}$/.test(phone.replace(/\s/g, ""));
-    if (!name.trim() || !valid || !age || !terms) {
-      setFormError("Add your name, a valid Safaricom number, and accept both checkboxes.");
+    if (!name.trim() || !valid || password.length < 8 || password !== passwordConfirmation || !age || !terms) {
+      setFormError("Add your details, use a matching password of at least 8 characters, and accept both checkboxes.");
       return;
     }
     setFormError(""); setBusy(true);
     try {
-      const result = await apiRequest<{ token: string; participant: { name: string } }>("/auth/register", { method: "POST", body: JSON.stringify({ full_name: name.trim(), phone_number: phone.replace(/\s/g, ""), age_confirmed: age, terms_accepted: terms }) });
+      const result = await apiRequest<{ token: string; participant: { name: string } }>("/auth/register", { method: "POST", body: JSON.stringify({ full_name: name.trim(), phone_number: phone.replace(/\s/g, ""), password, password_confirmation: passwordConfirmation, age_confirmed: age, terms_accepted: terms }) });
       localStorage.setItem("final-pool-token", result.token);
-      setAuthToken(result.token); setName(result.participant.name); setStep(2);
-    } catch (error) { setFormError(error instanceof ApiError ? error.message : "Registration failed."); }
+      setAuthToken(result.token); setName(result.participant.name); setPassword(""); setPasswordConfirmation(""); setStep(2);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) setAuthMode("login");
+      setFormError(error instanceof ApiError ? error.message : "Registration failed.");
+    }
     finally { setBusy(false); }
+  };
+
+  const loginParticipant = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!phone.trim() || !password) { setFormError("Enter your Safaricom number and password."); return; }
+    setFormError(""); setBusy(true);
+    try {
+      const result = await apiRequest<{ token: string; participant: { name: string } }>("/auth/login", { method: "POST", body: JSON.stringify({ phone_number: phone, password }) });
+      localStorage.setItem("final-pool-token", result.token);
+      setAuthToken(result.token); setName(result.participant.name); setPassword(""); setStep(2);
+      await refreshReceipt(result.token);
+    } catch (error) { setFormError(error instanceof ApiError ? error.message : "Sign in failed."); }
+    finally { setBusy(false); }
+  };
+
+  const logoutParticipant = async () => {
+    const token = authToken;
+    localStorage.removeItem("final-pool-token");
+    setAuthToken(null); setReceipt(null); setName(""); setPhone(""); setPassword(""); setStep(1); setAuthMode("login");
+    if (token) await apiRequest<void>("/auth/logout", { method: "POST" }, token).catch(() => undefined);
   };
 
   const submitPayment = async (e: FormEvent) => {
@@ -253,7 +282,8 @@ export default function PoolPage() {
           <button className={view === "admin" ? "active" : ""} onClick={() => navigate("admin")}><LockKeyhole size={14} /> Admin</button>
         </nav>
         <div className="header-actions">
-          <button className="outline-button" onClick={() => navigate(receipt ? "receipt" : "play")}><UserRound size={16} /> {receipt ? "My entry" : "Join pool"}</button>
+          <button className="outline-button" onClick={() => navigate(receipt ? "receipt" : "play")}><UserRound size={16} /> {receipt ? "My entry" : authToken ? "Continue entry" : "Join pool"}</button>
+          {authToken && <button className="account-logout" aria-label="Sign out" title="Sign out" onClick={logoutParticipant}><LogOut size={17} /></button>}
           <button className="mobile-menu" aria-label={mobileOpen ? "Close menu" : "Open menu"} onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X /> : <Menu />}</button>
         </div>
       </header>
@@ -334,16 +364,17 @@ export default function PoolPage() {
           <div className="stepper"><span className={step >= 1 ? "done" : ""}><i>{step > 1 ? <Check /> : "1"}</i> Register</span><b /><span className={step >= 2 ? "done" : ""}><i>2</i> Pick a team</span><b /><span className={step >= 3 ? "done" : ""}><i>3</i> Pay</span></div>
           {step === 1 ? (
             <div className="form-layout">
-              <form className="paper-card form-card" onSubmit={submitRegistration}>
-                <div className="card-title"><span><UserRound /></span><div><small>STEP 01</small><h2>Tell us who you are</h2></div></div>
-                <label>Full name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amina Kamau" /></label>
-                <label>Safaricom M-Pesa number<div className="phone-input"><span>KE +254</span><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" /></div><small>We encrypt this and never display it publicly.</small></label>
-                <label className="check-row"><input type="checkbox" checked={age} onChange={(e) => setAge(e.target.checked)} /><span>I confirm that I am 18 or older.</span></label>
-                <label className="check-row"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>I accept the pool rules: one entry, no refunds after close, and pooled payouts.</span></label>
+              <form className="paper-card form-card" onSubmit={authMode === "register" ? submitRegistration : loginParticipant}>
+                <div className="auth-switch" aria-label="Account access"><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setFormError(""); }}>Create account</button><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setFormError(""); }}>Sign in</button></div>
+                <div className="card-title"><span><UserRound /></span><div><small>STEP 01</small><h2>{authMode === "register" ? "Tell us who you are" : "Welcome back"}</h2></div></div>
+                {authMode === "register" && <label>Full name<input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amina Kamau" /></label>}
+                <label>Safaricom M-Pesa number<div className="phone-input"><span>KE +254</span><input inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" /></div><small>We encrypt this and never display it publicly.</small></label>
+                <label>Password<div className="password-input"><input type={showParticipantPassword ? "text" : "password"} autoComplete={authMode === "register" ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={authMode === "register" ? "At least 8 characters" : "Your password"} /><button type="button" aria-label={showParticipantPassword ? "Hide password" : "Show password"} onClick={() => setShowParticipantPassword(!showParticipantPassword)}>{showParticipantPassword ? <EyeOff /> : <Eye />}</button></div></label>
+                {authMode === "register" && <><label>Confirm password<input type={showParticipantPassword ? "text" : "password"} autoComplete="new-password" value={passwordConfirmation} onChange={(e) => setPasswordConfirmation(e.target.value)} placeholder="Repeat your password" /></label><label className="check-row"><input type="checkbox" checked={age} onChange={(e) => setAge(e.target.checked)} /><span>I confirm that I am 18 or older.</span></label><label className="check-row"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>I accept the pool rules: one entry, no refunds after close, and pooled payouts.</span></label></>}
                 {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
-                <button className="primary-button full" type="submit" disabled={busy}>{busy ? "Registering…" : "Continue to teams"} <ArrowRight /></button>
+                <button className="primary-button full" type="submit" disabled={busy}>{busy ? authMode === "register" ? "Creating account…" : "Signing in…" : authMode === "register" ? "Create account & continue" : "Sign in & continue"} <ArrowRight /></button>
               </form>
-              <aside className="rules-card"><ShieldCheck /><h3>Your details stay private</h3><p>Only the organiser can see your number. Public pool totals and chat use first names only.</p><hr /><h4>Quick rules</h4><ul><li>One confirmed entry per phone</li><li>KES 100 fixed stake</li><li>Entries close at kickoff</li><li>Manual payout after review</li></ul></aside>
+              <aside className="rules-card"><ShieldCheck /><h3>{authMode === "register" ? "Your details stay private" : "Pick up where you left off"}</h3><p>{authMode === "register" ? "Only the organiser can see your number. Public pool totals and chat use first names only." : "Sign in from any device to see your existing pick, payment status, and receipt."}</p><hr /><h4>Quick rules</h4><ul><li>One confirmed entry per phone</li><li>KES 100 fixed stake</li><li>Entries close at kickoff</li><li>Manual payout after review</li></ul></aside>
             </div>
           ) : (
             <div className="form-layout">
@@ -356,7 +387,6 @@ export default function PoolPage() {
                 <div className="stk-explainer"><ShieldCheck /><span><strong>Safaricom confirms the payment.</strong> Keep your phone nearby, enter your M-Pesa PIN on the secure prompt, and wait for this page to update.</span></div>
                 {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
                 <button className="primary-button full" type="submit" disabled={busy}>{busy ? "Sending prompt…" : "Send M-Pesa prompt"} <ShieldCheck /></button>
-                <button className="back-link" type="button" onClick={() => setStep(1)}>← Back to registration</button>
               </form>
               <aside className="rules-card amber"><Clock3 /><h3>Callback verified</h3><p>Your bet starts as processing. Only Safaricom's server callback can add it to the live pot; clicking the button never counts as payment.</p><div className="status-flow"><span>Prompt</span><ArrowRight /><span>Callback</span><ArrowRight /><span>Confirmed</span></div></aside>
             </div>

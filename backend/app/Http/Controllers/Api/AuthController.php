@@ -8,6 +8,7 @@ use App\Services\AuditService;
 use App\Services\Payments\Mpesa\PhoneNumberFormatter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -23,6 +24,7 @@ class AuthController extends Controller
         $data = $request->validate([
             'full_name' => ['required', 'string', 'min:2', 'max:120'],
             'phone_number' => ['required', 'string', 'max:24'],
+            'password' => ['required', 'string', 'min:8', 'max:255', 'confirmed'],
             'age_confirmed' => ['accepted'],
             'terms_accepted' => ['accepted'],
         ]);
@@ -35,7 +37,7 @@ class AuthController extends Controller
 
         $phoneHash = $this->phoneFormatter->hash($phone);
         if (User::query()->where('phone_hash', $phoneHash)->exists()) {
-            return response()->json(['message' => 'This phone number is already registered on this device-independent pool. Contact the organiser if you lost access.'], 409);
+            return response()->json(['message' => 'This phone number is already registered. Sign in instead.'], 409);
         }
 
         $user = User::create([
@@ -45,6 +47,7 @@ class AuthController extends Controller
             'phone_hash' => $phoneHash,
             'phone_last_four' => substr($phone, -4),
             'role' => User::ROLE_PARTICIPANT,
+            'password' => $data['password'],
             'terms_accepted_at' => now(),
             'age_confirmed_at' => now(),
         ]);
@@ -52,6 +55,35 @@ class AuthController extends Controller
         $this->audit->record('participant.registered', $user, $user, [], $request);
 
         return response()->json(['data' => ['token' => $token, 'participant' => $this->participant($user)]], 201);
+    }
+
+    public function login(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'phone_number' => ['required', 'string', 'max:24'],
+            'password' => ['required', 'string', 'max:255'],
+        ]);
+
+        try {
+            $phone = $this->phoneFormatter->normalize($data['phone_number']);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => 'The phone number or password is incorrect.'], 422);
+        }
+
+        $user = User::query()
+            ->where('phone_hash', $this->phoneFormatter->hash($phone))
+            ->where('role', User::ROLE_PARTICIPANT)
+            ->first();
+
+        if (! $user || ! $user->password || ! Hash::check($data['password'], $user->password)) {
+            return response()->json(['message' => 'The phone number or password is incorrect.'], 422);
+        }
+
+        $user->tokens()->where('name', 'participant-web')->delete();
+        $token = $user->createToken('participant-web', ['participant'])->plainTextToken;
+        $this->audit->record('participant.login', $user, $user, [], $request);
+
+        return response()->json(['data' => ['token' => $token, 'participant' => $this->participant($user)]]);
     }
 
     public function me(Request $request): JsonResponse

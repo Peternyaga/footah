@@ -4,7 +4,7 @@ A self-hostable office World Cup final pool with a static Next.js frontend and a
 
 ## What is implemented
 
-- Participant registration with encrypted Safaricom phone numbers and one entry per phone
+- Participant registration and returning-user login with password hashing, encrypted Safaricom phone numbers, and one entry per phone
 - KES 100 M-Pesa STK Push using the same Daraja request pattern as `Peternyaga/shwapy`
 - Callback-only payment confirmation with checkout ID, amount, phone, and receipt validation
 - Live team totals, private receipts, participant chat, and admin reconciliation
