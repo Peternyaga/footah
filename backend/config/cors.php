@@ -8,7 +8,7 @@ return [
         env('FRONTEND_URL_ALT'),
     ])),
     'allowed_origins_patterns' => [],
-    'allowed_headers' => ['Accept', 'Authorization', 'Content-Type', 'Origin', 'X-Requested-With'],
+    'allowed_headers' => ['Accept', 'Authorization', 'Content-Type', 'Origin', 'X-Authorization', 'X-Requested-With'],
     'exposed_headers' => [],
     'max_age' => 600,
     'supports_credentials' => false,

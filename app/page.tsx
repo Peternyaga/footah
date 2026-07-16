@@ -419,8 +419,8 @@ export default function PoolPage() {
                 </div>
                 {voteNotice && <div className="vote-success" role="status"><BadgeCheck /><span>{voteNotice} You have one vote in this match.</span></div>}
                 {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
-                <button className="primary-button full" type="submit" disabled={busy || !selected || savedVoteTeamId === selected}>{busy ? "Saving vote…" : savedVoteTeamId === selected ? "Vote saved" : selected ? `Vote for ${teamName(selected)}` : "Choose a team"} <BadgeCheck /></button>
-                {savedVoteTeamId === selected && <button className="outline-button full continue-payment" type="button" onClick={() => setStep(3)}>Continue to optional payment <ArrowRight /></button>}
+                <button className="primary-button full" type="submit" disabled={busy || !selected || (!!selected && savedVoteTeamId === selected)}>{busy ? "Saving vote…" : selected && savedVoteTeamId === selected ? "Vote saved" : selected ? `Vote for ${teamName(selected)}` : "Choose a team"} <BadgeCheck /></button>
+                {!!selected && savedVoteTeamId === selected && <button className="outline-button full continue-payment" type="button" onClick={() => setStep(3)}>Continue to optional payment <ArrowRight /></button>}
               </form>
               <aside className="rules-card"><Trophy /><h3>Your vote, your call</h3><p>Voting records your prediction. Payment is a separate optional step that makes the prediction eligible for the prize pool.</p></aside>
             </div>

@@ -124,6 +124,21 @@ class PoolFlowTest extends TestCase
             ->assertJsonPath('message', 'The phone number or password is incorrect.');
     }
 
+    public function test_hosting_safe_authorization_header_authenticates_participant(): void
+    {
+        $token = $this->registerParticipant('Hosted Player', '0712345678');
+
+        $this->withHeader('X-Authorization', 'Bearer '.$token)
+            ->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Hosted Player');
+
+        $this->withHeader('X-Authorization', 'Bearer '.$token)
+            ->putJson('/api/vote', ['team_id' => $this->teamA->id])
+            ->assertOk()
+            ->assertJsonPath('data.team.id', $this->teamA->id);
+    }
+
     public function test_authenticated_participant_can_vote_and_change_their_vote(): void
     {
         $token = $this->registerParticipant('Voting Player', '0712345678');

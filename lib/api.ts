@@ -10,7 +10,12 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}, tok
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
   if (options.body) headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (token) {
+    const bearer = `Bearer ${token}`;
+    headers.set("Authorization", bearer);
+    // Some shared Apache/FastCGI hosts strip the standard header during rewrites.
+    headers.set("X-Authorization", bearer);
+  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));

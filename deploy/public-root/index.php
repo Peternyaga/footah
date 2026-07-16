@@ -8,7 +8,7 @@ define('LARAVEL_START', microtime(true));
 // Some CGI/FastCGI hosts move Authorization during an internal rewrite.
 // Normalize it before Laravel captures the request so Sanctum can read bearer tokens.
 if (empty($_SERVER['HTTP_AUTHORIZATION'])) {
-    $authorization = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+    $authorization = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? $_SERVER['HTTP_X_AUTHORIZATION'] ?? null;
     if (! $authorization && function_exists('getallheaders')) {
         $headers = getallheaders();
         $authorization = $headers['Authorization'] ?? $headers['authorization'] ?? null;
