@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Vote extends Model
 {
-    protected $fillable = ['user_id', 'team_id'];
+    protected $fillable = ['user_id', 'match_id', 'team_id'];
+
+    public function match(): BelongsTo
+    {
+        return $this->belongsTo(PoolSetting::class, 'match_id');
+    }
 
     public function user(): BelongsTo
     {

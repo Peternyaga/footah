@@ -16,7 +16,8 @@ class VoteController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        $vote = $request->user()->vote()->with('team')->first();
+        $matchId = (int) ($request->query('match_id') ?: PoolSetting::current()->id);
+        $vote = $request->user()->votes()->where('match_id', $matchId)->with('team')->first();
 
         return response()->json(['data' => $vote ? $this->voteData($vote) : null]);
     }
@@ -24,14 +25,17 @@ class VoteController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate(['team_id' => ['required', 'integer', 'exists:teams,id']]);
-        $settings = PoolSetting::query()->firstOrFail();
+        $team = Team::query()->with('match')->whereKey($data['team_id'])->where('active', true)->firstOrFail();
+        $settings = $team->match;
+        if (! $settings) {
+            return response()->json(['message' => 'This team is not assigned to a match.'], 422);
+        }
         if (! $settings->acceptsBets()) {
             return response()->json(['message' => 'Voting is closed.'], 422);
         }
 
-        $team = Team::query()->whereKey($data['team_id'])->where('active', true)->firstOrFail();
         $vote = Vote::query()->updateOrCreate(
-            ['user_id' => $request->user()->id],
+            ['user_id' => $request->user()->id, 'match_id' => $settings->id],
             ['team_id' => $team->id],
         );
         $vote->setRelation('team', $team);

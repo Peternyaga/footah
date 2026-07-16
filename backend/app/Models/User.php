@@ -67,12 +67,22 @@ class User extends Authenticatable
 
     public function bet(): HasOne
     {
-        return $this->hasOne(Bet::class);
+        return $this->hasOne(Bet::class)->latestOfMany();
+    }
+
+    public function bets(): HasMany
+    {
+        return $this->hasMany(Bet::class);
     }
 
     public function vote(): HasOne
     {
-        return $this->hasOne(Vote::class);
+        return $this->hasOne(Vote::class)->latestOfMany();
+    }
+
+    public function votes(): HasMany
+    {
+        return $this->hasMany(Vote::class);
     }
 
     public function chatMessages(): HasMany

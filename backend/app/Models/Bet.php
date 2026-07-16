@@ -20,7 +20,12 @@ class Bet extends Model
 
     public const STATUS_TIMEOUT = 'timeout';
 
-    protected $fillable = ['public_id', 'user_id', 'team_id', 'amount', 'status', 'merchant_request_id', 'checkout_request_id', 'mpesa_receipt_number', 'result_code', 'result_description', 'raw_request', 'raw_response', 'raw_callback', 'initiated_at', 'confirmed_at'];
+    protected $fillable = ['public_id', 'user_id', 'match_id', 'team_id', 'amount', 'status', 'merchant_request_id', 'checkout_request_id', 'mpesa_receipt_number', 'result_code', 'result_description', 'raw_request', 'raw_response', 'raw_callback', 'initiated_at', 'confirmed_at'];
+
+    public function match(): BelongsTo
+    {
+        return $this->belongsTo(PoolSetting::class, 'match_id');
+    }
 
     protected $hidden = ['raw_request', 'raw_response', 'raw_callback'];
 

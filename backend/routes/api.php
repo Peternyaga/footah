@@ -28,6 +28,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::prefix('admin')->middleware('admin')->group(function (): void {
         Route::get('overview', [AdminPoolController::class, 'overview']);
+        Route::post('matches', [AdminPoolController::class, 'createMatch']);
+        Route::patch('matches/{match}', [AdminPoolController::class, 'updateMatch']);
         Route::put('teams', [AdminPoolController::class, 'updateTeams']);
         Route::patch('settings', [AdminPoolController::class, 'updateSettings']);
         Route::post('bets/{bet}/confirm', [AdminPoolController::class, 'confirmBet']);

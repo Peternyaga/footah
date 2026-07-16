@@ -38,6 +38,7 @@ export type ApiTeam = {
 export type VoteChoice = { team: ApiTeam; voted_at: string | null };
 
 export type PoolState = {
+  match_id: number;
   event_name: string;
   entry_fee: number;
   betting_closes_at: string;
@@ -47,6 +48,17 @@ export type PoolState = {
   confirmed_entries: number;
   winner: ApiTeam | null;
   postponement_notice: string | null;
+  teams: ApiTeam[];
+};
+
+export type ApiMatch = {
+  id: number;
+  event_name: string;
+  entry_fee: number;
+  betting_closes_at: string;
+  status: "open" | "closed" | "postponed" | "settled";
+  winner_team_id: number | null;
+  winner_team?: ApiTeam | null;
   teams: ApiTeam[];
 };
 
@@ -66,7 +78,8 @@ export type BetReceipt = {
 export type ChatItem = { id: number; name: string; message: string; created_at: string };
 
 export type AdminOverview = {
-  settings: { status: string; winner_team_id: number | null; cost_deduction: number };
+  settings: ApiMatch & { cost_deduction: number };
+  matches: ApiMatch[];
   teams: ApiTeam[];
   registrations: Array<{
     id: string;

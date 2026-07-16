@@ -18,7 +18,7 @@ class PayoutService
     public function settle(Team $winner, User $admin): array
     {
         $result = DB::transaction(function () use ($winner): array {
-            $settings = PoolSetting::query()->lockForUpdate()->firstOrFail();
+            $settings = PoolSetting::query()->whereKey($winner->match_id)->lockForUpdate()->firstOrFail();
             if ($settings->status === PoolSetting::STATUS_SETTLED) {
                 if ($settings->winner_team_id !== $winner->id) {
                     throw new RuntimeException('The pool is already settled with another winner.');
@@ -27,16 +27,12 @@ class PayoutService
                 return $this->summary($settings);
             }
 
-            $allBets = Bet::query()->where('status', Bet::STATUS_CONFIRMED)->orderBy('id')->lockForUpdate()->get();
+            $allBets = Bet::query()->where('match_id', $settings->id)->where('status', Bet::STATUS_CONFIRMED)->orderBy('id')->lockForUpdate()->get();
             $winningBets = $allBets->where('team_id', $winner->id)->values();
-            if ($winningBets->isEmpty()) {
-                throw new RuntimeException('No confirmed backers selected this team.');
-            }
-
             $totalPool = (int) $allBets->sum('amount');
             $distributable = max(0, $totalPool - $settings->cost_deduction);
-            $base = intdiv($distributable, $winningBets->count());
-            $remainder = $distributable % $winningBets->count();
+            $base = $winningBets->isEmpty() ? 0 : intdiv($distributable, $winningBets->count());
+            $remainder = $winningBets->isEmpty() ? 0 : $distributable % $winningBets->count();
 
             foreach ($winningBets as $index => $bet) {
                 Payout::updateOrCreate(
@@ -61,9 +57,9 @@ class PayoutService
         return [
             'winner_team_id' => $settings->winner_team_id,
             'winner' => $settings->winnerTeam?->name,
-            'total_pool' => (int) Bet::query()->where('status', Bet::STATUS_CONFIRMED)->sum('amount'),
+            'total_pool' => (int) Bet::query()->where('match_id', $settings->id)->where('status', Bet::STATUS_CONFIRMED)->sum('amount'),
             'cost_deduction' => $settings->cost_deduction,
-            'payouts' => Payout::query()->with('user:id,name')->orderBy('id')->get()->map(fn (Payout $payout): array => ['name' => $payout->user->name, 'amount' => $payout->amount, 'status' => $payout->status])->all(),
+            'payouts' => Payout::query()->whereHas('bet', fn ($query) => $query->where('match_id', $settings->id))->with('user:id,name')->orderBy('id')->get()->map(fn (Payout $payout): array => ['name' => $payout->user->name, 'amount' => $payout->amount, 'status' => $payout->status])->all(),
         ];
     }
 }
