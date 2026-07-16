@@ -136,6 +136,12 @@ jobs:
       - name: Check deployed sites
         run: |
           set -euo pipefail
-          curl --fail --show-error --silent --retry 5 --retry-delay 3 "$FRONTEND_URL" > /dev/null
-          curl --fail --show-error --silent --retry 5 --retry-delay 3 "${NEXT_PUBLIC_API_BASE_URL%/}/pool" > /dev/null
+          if ! curl --fail --show-error --silent --retry 3 --retry-delay 2 "$FRONTEND_URL" > /dev/null; then
+            echo "Frontend health check failed. Reporting server path and cPanel domain data:" >&2
+            ssh -i "$HOME/.ssh/deploy_key" -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" \
+              "printf 'Home: '; pwd; ls -ld '$DEPLOY_PATH' '$DEPLOY_PATH/current' '$DEPLOY_PATH/current/frontend'; if command -v uapi >/dev/null 2>&1; then uapi --output=jsonpretty DomainInfo domains_data || uapi --output=jsonpretty DomainInfo list_domains || true; fi"
+            exit 1
+          fi
+          curl --fail --show-error --silent --retry 3 --retry-delay 2 "${NEXT_PUBLIC_API_BASE_URL%/}/pool" > /dev/null
           echo "Deployment health checks passed."
