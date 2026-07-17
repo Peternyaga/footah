@@ -45,6 +45,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 window.addEventListener("pointerdown", unmuteAnthem, { capture: true });
                 window.addEventListener("touchstart", unmuteAnthem, { capture: true });
                 window.addEventListener("keydown", unmuteAnthem, { capture: true });
+                window.addEventListener("scroll", unmuteAnthem, { capture: true, passive: true });
+                window.addEventListener("wheel", unmuteAnthem, { capture: true, passive: true });
               })();
             `,
           }}

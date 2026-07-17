@@ -38,7 +38,7 @@ export function BackgroundAnthem({ src }: BackgroundAnthemProps) {
     window.addEventListener("pageshow", unmuteAndPlay);
     document.addEventListener("visibilitychange", tryWhenVisible);
 
-    const gestureEvents: Array<keyof WindowEventMap> = ["click", "pointerdown", "touchstart", "keydown"];
+    const gestureEvents: Array<keyof WindowEventMap> = ["click", "pointerdown", "touchstart", "keydown", "scroll", "wheel"];
     for (const event of gestureEvents) {
       window.addEventListener(event, unmuteAndPlay, { capture: true, passive: true });
     }
