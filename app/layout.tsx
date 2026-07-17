@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { assetPath } from "../lib/assets";
 import "./globals.css";
 
-const backgroundAudioUrl = "/assets/music/world-cup-2026-anthem-dna-ultralight.mp3";
+const backgroundAudioUrl = assetPath("/assets/music/world-cup-2026-anthem-dna-ultralight.mp3");
+const backgroundPosterUrl = assetPath("/assets/images/dna-performance-commons-wide.jpg");
 
 export const metadata: Metadata = {
   title: "The Final Whistle · Office Pool",
@@ -13,7 +15,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <head>
         <link rel="preload" href={backgroundAudioUrl} as="audio" type="audio/mpeg" />
-        <link rel="preload" href="/assets/images/dna-performance-commons-wide.jpg" as="image" />
+        <link rel="preload" href={backgroundPosterUrl} as="image" />
       </head>
       <body>
         <audio id="background-anthem" src={backgroundAudioUrl} autoPlay loop preload="auto" aria-hidden="true" />
@@ -42,18 +44,18 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <video
             id="background-performance-video"
             className="backdrop-video"
-            src="/assets/videos/dna-performance-background.mp4"
+            src={assetPath("/assets/videos/dna-performance-background.mp4")}
             autoPlay
             muted
             loop
             playsInline
             preload="metadata"
-            poster="/assets/images/dna-performance-commons-wide.jpg"
+            poster={backgroundPosterUrl}
           />
-          <span className="backdrop-frame backdrop-performance-wide" />
-          <span className="backdrop-frame backdrop-performance-stage" />
-          <span className="backdrop-frame backdrop-performance-duet" />
-          <span className="backdrop-frame backdrop-performance-close" />
+          <span className="backdrop-frame backdrop-performance-wide" style={{ backgroundImage: `url("${assetPath("/assets/images/dna-performance-commons-wide.jpg")}")` }} />
+          <span className="backdrop-frame backdrop-performance-stage" style={{ backgroundImage: `url("${assetPath("/assets/images/dna-performance-stage-wide.jpg")}")` }} />
+          <span className="backdrop-frame backdrop-performance-duet" style={{ backgroundImage: `url("${assetPath("/assets/images/dna-performance-duet-close.jpg")}")` }} />
+          <span className="backdrop-frame backdrop-performance-close" style={{ backgroundImage: `url("${assetPath("/assets/images/dna-performance-press-square.jpeg")}")` }} />
         </div>
         <script
           dangerouslySetInnerHTML={{

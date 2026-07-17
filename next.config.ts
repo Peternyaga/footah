@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: "export",
   basePath,
+  env: {
+    NEXT_PUBLIC_BASE_PATH: basePath,
+  },
   typescript: {
     // TypeScript is checked explicitly by `npm run lint` before the production build.
     ignoreBuildErrors: true,

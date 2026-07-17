@@ -12,10 +12,10 @@ main > :not(.image-backdrop) { position:relative; z-index:1; }
 .image-backdrop:after { content:""; position:absolute; inset:0; z-index:5; background:linear-gradient(180deg,rgba(7,12,10,.22),rgba(7,12,10,.08) 42%,rgba(7,12,10,.34)); }
 .backdrop-video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center; opacity:.96; filter:saturate(1.16) contrast(1.08) brightness(.86); }
 .backdrop-frame { position:absolute; inset:0; z-index:1; background-size:cover; background-position:center; background-repeat:no-repeat; opacity:0; transform:scale(1.04); animation:backdropCycle 36s infinite; filter:saturate(1.1) contrast(1.04) brightness(.88); }
-.backdrop-performance-wide { background-image:url("/assets/images/dna-performance-commons-wide.jpg"); animation-delay:0s; }
-.backdrop-performance-stage { background-image:url("/assets/images/dna-performance-stage-wide.jpg"); animation-delay:9s; }
-.backdrop-performance-duet { background-image:url("/assets/images/dna-performance-duet-close.jpg"); animation-delay:18s; background-position:center 30%; }
-.backdrop-performance-close { background-image:url("/assets/images/dna-performance-press-square.jpeg"); animation-delay:27s; background-position:center 28%; }
+.backdrop-performance-wide { animation-delay:0s; }
+.backdrop-performance-stage { animation-delay:9s; }
+.backdrop-performance-duet { animation-delay:18s; background-position:center 30%; }
+.backdrop-performance-close { animation-delay:27s; background-position:center 28%; }
 @keyframes backdropCycle {
   0%, 20% { opacity:.16; transform:scale(1.04); }
   25%, 95% { opacity:0; transform:scale(1.09); }

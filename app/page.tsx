@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AdminOverview, ApiError, ApiMatch, BetReceipt, ChatItem, PoolState, VoteChoice, apiRequest } from "../lib/api";
+import { assetPath } from "../lib/assets";
 
 type View = "home" | "play" | "chat" | "receipt" | "admin";
 type AuthMode = "register" | "login";
@@ -40,8 +41,8 @@ type Team = { id: number; code: string; name: string; route: string; color: stri
 type Registration = { id?: string; betId?: number; name: string; phone: string; team: number; code: string; status: BetReceipt["status"]; time: string };
 
 const baseTeams: Team[] = [
-  { id: 1, code: "ARG", name: "Argentina", route: "Finalist · Messi leads the holders", color: "#74c7f5", color2: "#ffffff", backers: 0, votes: 0, amount: 0, image: "/assets/images/argentina-lionel-messi.jpg", flag: "🇦🇷", player: "Lionel Messi" },
-  { id: 2, code: "ESP", name: "Spain", route: "Finalist · Lamine Yamal's Roja", color: "#d61920", color2: "#ffd43b", backers: 0, votes: 0, amount: 0, image: "/assets/images/spain-lamine-yamal.jpg", flag: "🇪🇸", player: "Lamine Yamal" },
+  { id: 1, code: "ARG", name: "Argentina", route: "Finalist · Messi leads the holders", color: "#74c7f5", color2: "#ffffff", backers: 0, votes: 0, amount: 0, image: assetPath("/assets/images/argentina-lionel-messi.jpg"), flag: "🇦🇷", player: "Lionel Messi" },
+  { id: 2, code: "ESP", name: "Spain", route: "Finalist · Lamine Yamal's Roja", color: "#d61920", color2: "#ffd43b", backers: 0, votes: 0, amount: 0, image: assetPath("/assets/images/spain-lamine-yamal.jpg"), flag: "🇪🇸", player: "Lamine Yamal" },
 ];
 
 const seededRegistrations: Registration[] = [];
@@ -91,7 +92,7 @@ function useCountdown(target: string) {
 }
 
 function Mark({ small = false }: { small?: boolean }) {
-  return <span className={small ? "mark mark-small" : "mark"}><img src="/assets/images/world-cup-trophy.jpg" alt="" /></span>;
+  return <span className={small ? "mark mark-small" : "mark"}><img src={assetPath("/assets/images/world-cup-trophy.jpg")} alt="" /></span>;
 }
 
 export default function PoolPage() {
@@ -391,7 +392,7 @@ export default function PoolPage() {
               </div>
             </div>
             <div className="hero-art" aria-label="FIFA World Cup trophy">
-              <img className="hero-world-cup-image" src="/assets/images/world-cup-trophy.jpg" alt="FIFA World Cup trophy" />
+              <img className="hero-world-cup-image" src={assetPath("/assets/images/world-cup-trophy.jpg")} alt="FIFA World Cup trophy" />
               <div className="hero-photo-label"><small>FINAL NIGHT</small><strong>WORLD CUP 2026</strong></div>
             </div>
           </section>
