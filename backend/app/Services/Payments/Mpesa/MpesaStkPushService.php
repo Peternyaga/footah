@@ -39,7 +39,7 @@ class MpesaStkPushService
             'PhoneNumber' => $phoneNumber,
             'CallBackURL' => $callbackUrl,
             'AccountReference' => substr((string) config('services.mpesa.account_reference').'-'.$bet->public_id, 0, 12),
-            'TransactionDesc' => 'Final pool entry '.$bet->public_id,
+            'TransactionDesc' => 'FinalWhistle',
         ];
 
         $response = Http::withToken($token)

@@ -103,6 +103,7 @@ cd "$RELEASE_DIR/backend"
 "$PHP_BIN" artisan optimize:clear
 "$PHP_BIN" artisan config:cache
 "$PHP_BIN" artisan route:cache
+"$PHP_BIN" artisan mpesa:check-auth --fresh
 
 install -m 0644 "$RELEASE_DIR/public-root/.htaccess" "$DEPLOY_PATH/.htaccess"
 install -m 0644 "$RELEASE_DIR/public-root/index.php" "$DEPLOY_PATH/index.php"

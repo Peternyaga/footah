@@ -1,5 +1,23 @@
 <?php
 
+$mpesaEnvironment = strtolower(trim((string) env('MPESA_ENV', 'sandbox')));
+$mpesaEnvironment = match ($mpesaEnvironment) {
+    'live', 'prod', 'production' => 'live',
+    'sandbox', 'test', 'testing' => 'sandbox',
+    default => $mpesaEnvironment,
+};
+$firstMpesaValue = static function (string ...$names): ?string {
+    foreach ($names as $name) {
+        $value = env($name);
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+    }
+
+    return null;
+};
+$mpesaIsLive = $mpesaEnvironment === 'live';
+
 return [
 
     /*
@@ -36,19 +54,19 @@ return [
     ],
 
     'mpesa' => [
-        'env' => env('MPESA_ENV', 'sandbox'),
-        'consumer_key' => env('MPESA_ENV') === 'live'
-            ? env('MPESA_CONSUMER_KEY')
-            : env('MPESA_CONSUMER_KEY_SANDBOX'),
-        'consumer_secret' => env('MPESA_ENV') === 'live'
-            ? env('MPESA_CONSUMER_SECRET')
-            : env('MPESA_CONSUMER_SECRET_SANDBOX'),
-        'shortcode' => env('MPESA_ENV') === 'live'
-            ? env('MPESA_SHORTCODE')
-            : env('MPESA_SHORTCODE_SANDBOX'),
-        'passkey' => env('MPESA_ENV') === 'live'
-            ? env('MPESA_PASSKEY')
-            : env('MPESA_PASSKEY_SANDBOX'),
+        'env' => $mpesaEnvironment,
+        'consumer_key' => $mpesaIsLive
+            ? $firstMpesaValue('MPESA_CONSUMER_KEY')
+            : $firstMpesaValue('MPESA_CONSUMER_KEY_SANDBOX', 'MPESA_CONSUMER_KEY'),
+        'consumer_secret' => $mpesaIsLive
+            ? $firstMpesaValue('MPESA_CONSUMER_SECRET')
+            : $firstMpesaValue('MPESA_CONSUMER_SECRET_SANDBOX', 'MPESA_CONSUMER_SECRET'),
+        'shortcode' => $mpesaIsLive
+            ? $firstMpesaValue('MPESA_SHORTCODE')
+            : $firstMpesaValue('MPESA_SHORTCODE_SANDBOX', 'MPESA_SHORTCODE'),
+        'passkey' => $mpesaIsLive
+            ? $firstMpesaValue('MPESA_PASSKEY')
+            : $firstMpesaValue('MPESA_PASSKEY_SANDBOX', 'MPESA_PASSKEY'),
         'party_b' => env('MPESA_PARTY_B'),
         'transaction_type' => env('MPESA_TRANSACTION_TYPE', 'CustomerPayBillOnline'),
         'account_reference' => env('MPESA_ACCOUNT_REFERENCE', 'FinalWhistle'),
