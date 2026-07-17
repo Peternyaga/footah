@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { assetPath } from "../lib/assets";
+import { BackgroundAnthem } from "./BackgroundAnthem";
 import "./globals.css";
 
 const backgroundAudioUrl = assetPath("/assets/music/world-cup-2026-anthem-dna-ultralight.mp3");
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="preload" href={backgroundPosterUrl} as="image" />
       </head>
       <body>
-        <audio id="background-anthem" src={backgroundAudioUrl} autoPlay loop preload="auto" aria-hidden="true" />
+        <BackgroundAnthem src={backgroundAudioUrl} />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   const audio = document.getElementById("background-anthem");
                   if (!audio) return;
                   audio.volume = 0.72;
+                  audio.muted = false;
                   audio.play().catch(() => {});
                 };
                 playAnthem();
