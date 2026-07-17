@@ -20,8 +20,8 @@ class DatabaseSeeder extends Seeder
             'status' => PoolSetting::STATUS_OPEN,
             'cost_deduction' => config('pool.cost_deduction'),
         ]);
-        Team::firstOrCreate(['code' => 'A'], ['match_id' => $match->id, 'name' => 'Finalist A', 'route' => 'Winner · Spain vs France', 'color' => '#ef634d', 'color_secondary' => '#f0b24e', 'active' => true, 'display_order' => 1]);
-        Team::firstOrCreate(['code' => 'B'], ['match_id' => $match->id, 'name' => 'Finalist B', 'route' => 'Winner · England vs Argentina', 'color' => '#376fdc', 'color_secondary' => '#58c6ff', 'active' => true, 'display_order' => 2]);
+        Team::firstOrCreate(['code' => 'A'], ['match_id' => $match->id, 'name' => 'Argentina', 'route' => 'Finalist · Messi leads the holders', 'color' => '#74c7f5', 'color_secondary' => '#ffffff', 'active' => true, 'display_order' => 1]);
+        Team::firstOrCreate(['code' => 'B'], ['match_id' => $match->id, 'name' => 'Spain', 'route' => "Finalist · Lamine Yamal's Roja", 'color' => '#d61920', 'color_secondary' => '#ffd43b', 'active' => true, 'display_order' => 2]);
         Team::query()->whereIn('code', ['A', 'B'])->whereNull('match_id')->update(['match_id' => $match->id]);
 
         if (filled(config('pool.admin_password'))) {

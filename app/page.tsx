@@ -36,12 +36,12 @@ import { AdminOverview, ApiError, ApiMatch, BetReceipt, ChatItem, PoolState, Vot
 
 type View = "home" | "play" | "chat" | "receipt" | "admin";
 type AuthMode = "register" | "login";
-type Team = { id: number; code: string; name: string; route: string; color: string; color2: string; backers: number; votes: number; amount: number };
+type Team = { id: number; code: string; name: string; route: string; color: string; color2: string; backers: number; votes: number; amount: number; image: string; flag: string; player: string };
 type Registration = { id?: string; betId?: number; name: string; phone: string; team: number; code: string; status: BetReceipt["status"]; time: string };
 
 const baseTeams: Team[] = [
-  { id: 1, code: "A", name: "Finalist A", route: "Winner · Spain vs France", color: "#f35f44", color2: "#ffb45e", backers: 0, votes: 0, amount: 0 },
-  { id: 2, code: "B", name: "Finalist B", route: "Winner · England vs Argentina", color: "#3568e8", color2: "#58c6ff", backers: 0, votes: 0, amount: 0 },
+  { id: 1, code: "ARG", name: "Argentina", route: "Finalist · Messi leads the holders", color: "#74c7f5", color2: "#ffffff", backers: 0, votes: 0, amount: 0, image: "/assets/images/argentina-lionel-messi.jpg", flag: "🇦🇷", player: "Lionel Messi" },
+  { id: 2, code: "ESP", name: "Spain", route: "Finalist · Lamine Yamal's Roja", color: "#d61920", color2: "#ffd43b", backers: 0, votes: 0, amount: 0, image: "/assets/images/spain-lamine-yamal.jpg", flag: "🇪🇸", player: "Lamine Yamal" },
 ];
 
 const seededRegistrations: Registration[] = [];
@@ -49,6 +49,30 @@ const seededRegistrations: Registration[] = [];
 const seededMessages: Array<{ name: string; initials: string; text: string; time: string; color: string }> = [];
 
 const money = new Intl.NumberFormat("en-KE", { style: "currency", currency: "KES", maximumFractionDigits: 0 });
+
+function teamVisual(team: { id: number; code: string; name: string }, index = 0) {
+  const identity = `${team.code} ${team.name}`.toLowerCase();
+  const isSpain = identity.includes("spain") || identity.includes("esp") || team.code === "B" || index === 1;
+  return isSpain ? baseTeams[1] : baseTeams[0];
+}
+
+function presentTeam(team: { id: number; code: string; name: string; route: string | null; color: string; color_secondary: string; backers?: number; votes?: number; pooled?: number }, index = 0): Team {
+  const visual = teamVisual(team, index);
+  return {
+    id: team.id,
+    code: visual.code,
+    name: visual.name,
+    route: visual.route,
+    color: visual.color,
+    color2: visual.color2,
+    backers: team.backers || 0,
+    votes: team.votes || 0,
+    amount: team.pooled || 0,
+    image: visual.image,
+    flag: visual.flag,
+    player: visual.player,
+  };
+}
 
 function useCountdown(target: string) {
   const [now, setNow] = useState<number | null>(null);
@@ -67,7 +91,7 @@ function useCountdown(target: string) {
 }
 
 function Mark({ small = false }: { small?: boolean }) {
-  return <span className={small ? "mark mark-small" : "mark"}><Trophy size={small ? 15 : 19} strokeWidth={2.5} /></span>;
+  return <span className={small ? "mark mark-small" : "mark"}><img src="/assets/images/world-cup-trophy.jpg" alt="" /></span>;
 }
 
 export default function PoolPage() {
@@ -124,7 +148,7 @@ export default function PoolPage() {
       const state = await apiRequest<PoolState>("/pool");
       setPoolState(state);
       setBettingClosesAt(state.betting_closes_at);
-      setTeams(state.teams.map((team) => ({ id: team.id, code: team.code, name: team.name, route: team.route || "Finalist", color: team.color, color2: team.color_secondary, backers: team.backers || 0, votes: team.votes || 0, amount: team.pooled || 0 })));
+      setTeams(state.teams.map((team, index) => presentTeam(team, index)));
       setWinner(state.winner?.id || null);
       setApiNotice("");
     } catch (error) {
@@ -157,7 +181,7 @@ export default function PoolPage() {
     const overview = await apiRequest<AdminOverview>(`/admin/overview${matchId ? `?match_id=${matchId}` : ""}`, {}, token);
     setAdminMatches(overview.matches);
     setAdminSelectedMatchId(overview.settings.id);
-    setAdminTeams(overview.teams.map((team) => ({ id: team.id, code: team.code, name: team.name, route: team.route || "Finalist", color: team.color, color2: team.color_secondary, backers: team.backers || 0, votes: team.votes || 0, amount: team.pooled || 0 })));
+    setAdminTeams(overview.teams.map((team, index) => presentTeam(team, index)));
     setDraftNames(overview.teams.map((team) => team.name));
     setRegistrations(overview.registrations.map((item) => ({ id: item.id, betId: item.bet?.id, name: item.name, phone: item.phone_number, team: item.bet?.team_id || 0, code: item.bet?.mpesa_receipt_number || "—", status: item.bet?.status || "pending", time: new Date(item.created_at).toLocaleString() })));
     setAdminWinner(overview.settings.winner_team_id);
@@ -358,23 +382,17 @@ export default function PoolPage() {
         <>
           <section className="hero">
             <div className="hero-copy">
-              <div className="eyebrow"><span className="pulse" /> ENTRIES ARE OPEN</div>
-              <h1>One match.<br /><em>One office.</em><br />All the bragging rights.</h1>
-              <p>Pick the champion, back your call with KES 100, and share the pool if your side lifts the trophy.</p>
+              <div className="eyebrow"><span className="pulse" /> ARGENTINA VS SPAIN</div>
+              <h1>The king's last dance.<br /><em>The kid's first crown.</em><br />Choose your side.</h1>
+              <p>Messi carries a lifetime of magic. Yamal arrives with tomorrow in his boots. One final, one office, one call.</p>
               <div className="hero-actions">
                 <button className="primary-button" onClick={() => navigate("play")}>Make your pick <ArrowRight size={18} /></button>
                 <span className="micro-proof"><ShieldCheck size={18} /> Safaricom callback verified</span>
               </div>
             </div>
-            <div className="hero-art" aria-label="Final match illustration">
-              <div className="hero-stamp">METLIFE<br /><strong>2026</strong></div>
-              <div className="stadium-ring ring-one" />
-              <div className="stadium-ring ring-two" />
-              <div className="trophy-glow" />
-              <Trophy className="hero-trophy" strokeWidth={1.2} />
-              <div className="floating-card card-left"><span>30</span><small>BACKERS</small></div>
-              <div className="floating-card card-right"><span>KES 3K</span><small>IN THE POT</small></div>
-              <div className="scribble">FINAL<br />NIGHT!</div>
+            <div className="hero-art" aria-label="FIFA World Cup trophy">
+              <img className="hero-world-cup-image" src="/assets/images/world-cup-trophy.jpg" alt="FIFA World Cup trophy" />
+              <div className="hero-photo-label"><small>FINAL NIGHT</small><strong>WORLD CUP 2026</strong></div>
             </div>
           </section>
 
@@ -392,13 +410,14 @@ export default function PoolPage() {
             {winner && <div className="winner-banner"><Crown /> <span><strong>{teamName(winner)} are the champions.</strong> The payout list is ready for the organiser.</span></div>}
             <div className="team-grid">
               {teamTotals.map((team, index) => (
-                <article className="team-card" key={team.id} style={{ "--team": team.color, "--team2": team.color2 } as React.CSSProperties}>
+                <article className="team-card" key={team.id} style={{ "--team": team.color, "--team2": team.color2, "--team-image": `url(${team.image})` } as React.CSSProperties}>
                   <div className="team-wash" />
+                  <div className="team-photo" aria-hidden="true" />
                   <div className="team-top"><span className="team-seed">0{index + 1}</span><span className="trend"><Flame size={14} /> {index === 0 ? "Leading" : "Underdog"}</span></div>
-                  <div className="team-crest">{team.code}<small>FINALIST</small></div>
-                  <div className="team-info"><span>{team.route}</span><h3>{team.name}</h3></div>
+                  <div className="team-crest"><span>{team.flag}</span><small>{team.code}</small></div>
+                  <div className="team-info"><span>{team.route}</span><h3>{team.name}</h3><em>{team.player}</em></div>
                   <div className="team-stats"><div><strong>{team.votes}</strong><small>VOTES</small></div><div><strong>{money.format(team.amount)}</strong><small>STAKED</small></div></div>
-                  <button onClick={() => beginPick(team.id)}>Back {team.name} <ArrowRight size={17} /></button>
+                  <button className="team-back-button" onClick={() => beginPick(team.id)}><span>{team.flag}</span> Back {team.name} <ArrowRight size={17} /></button>
                 </article>
               ))}
             </div>
@@ -449,21 +468,21 @@ export default function PoolPage() {
                 <div className="card-title"><span><BadgeCheck /></span><div><small>STEP 02</small><h2>Vote for the winner</h2></div></div>
                 <p className="form-lead">Choose one team. Your vote is saved immediately and can be changed until the pool closes.</p>
                 <div className="mini-team-grid">
-                  {teams.map((team) => <button type="button" key={team.id} className={selected === team.id ? "mini-team selected" : "mini-team"} onClick={() => { setSelected(team.id); setVoteNotice(""); setFormError(""); }} style={{ "--team": team.color } as React.CSSProperties}><span>{team.code}</span><div><small>{team.route}</small><strong>{team.name}</strong><em>{team.votes} supporter{team.votes === 1 ? "" : "s"} · live</em></div>{selected === team.id && <BadgeCheck />}</button>)}
+                  {teams.map((team) => <button type="button" key={team.id} className={selected === team.id ? "mini-team selected" : "mini-team"} onClick={() => { setSelected(team.id); setVoteNotice(""); setFormError(""); }} style={{ "--team": team.color } as React.CSSProperties}><span>{team.flag}</span><div><small>{team.player} · {team.code}</small><strong>{team.name}</strong><em>{team.votes} supporter{team.votes === 1 ? "" : "s"} · live</em></div>{selected === team.id && <BadgeCheck />}</button>)}
                 </div>
                 {voteNotice && <div className="vote-success" role="status"><BadgeCheck /><span>{voteNotice} You have one vote in this match.</span></div>}
                 {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
                 <button className="primary-button full" type="submit" disabled={busy || !selected || (!!selected && savedVoteTeamId === selected)}>{busy ? "Saving vote…" : selected && savedVoteTeamId === selected ? "Vote saved" : selected ? `Vote for ${teamName(selected)}` : "Choose a team"} <BadgeCheck /></button>
                 {!!selected && savedVoteTeamId === selected && <button className="outline-button full continue-payment" type="button" onClick={() => setStep(3)}>Continue to optional payment <ArrowRight /></button>}
               </form>
-              <aside className="rules-card"><Trophy /><h3>Your vote, your call</h3><p>Voting records your prediction. Payment is a separate optional step that makes the prediction eligible for the prize pool.</p></aside>
+              <aside className="rules-card"><Mark small /><h3>Your vote, your call</h3><p>Voting records your prediction. Payment is a separate optional step that makes the prediction eligible for the prize pool.</p></aside>
             </div>
           ) : (
             <div className="form-layout">
               <form className="paper-card form-card" onSubmit={submitPayment}>
                 <div className="card-title"><span><WalletCards /></span><div><small>STEP 03</small><h2>Back your vote</h2></div></div>
                 {voteNotice && <div className="vote-success"><BadgeCheck /><span>{voteNotice}</span></div>}
-                <div className="selected-vote"><span style={{ background: teams.find((team) => team.id === selected)?.color }}>{teams.find((team) => team.id === selected)?.code}</span><div><small>YOUR VOTE</small><strong>{selected ? teamName(selected) : "No team selected"}</strong></div><button type="button" onClick={() => setStep(2)}>Change vote</button></div>
+                <div className="selected-vote"><span style={{ background: teams.find((team) => team.id === selected)?.color }}>{teams.find((team) => team.id === selected)?.flag}</span><div><small>YOUR VOTE</small><strong>{selected ? teamName(selected) : "No team selected"}</strong></div><button type="button" onClick={() => setStep(2)}>Change vote</button></div>
                 <div className="pay-instruction"><div><small>PAY EXACTLY</small><strong>{money.format(poolState?.entry_fee || 100)}</strong></div><ArrowRight /><div><small>ON YOUR PHONE</small><strong>STK PUSH</strong></div></div>
                 <div className="stk-explainer"><ShieldCheck /><span><strong>Safaricom confirms the payment.</strong> Keep your phone nearby, enter your M-Pesa PIN on the secure prompt, and wait for this page to update.</span></div>
                 {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
@@ -480,7 +499,7 @@ export default function PoolPage() {
           <div className="page-intro center"><div className="eyebrow dark">YOUR ENTRY</div><h1>{receipt?.status === "confirmed" ? "Your bet is confirmed." : receipt && ["failed", "cancelled", "timeout"].includes(receipt.status) ? "Payment was not confirmed." : receipt ? "Payment is processing." : "No entry yet."}</h1><p>{receipt ? "This page checks the callback automatically. A failed, cancelled, or timed-out prompt can be retried from Place a bet." : "Register, choose a finalist, and approve the M-Pesa prompt first."}</p></div>
           {receipt ? <div className="receipt-card">
             <div className="receipt-head"><Mark /><div><strong>THE FINAL WHISTLE</strong><small>OFFICE POOL RECEIPT</small></div><span className={`status-pill ${receipt.status}`}><i /> {receipt.status}</span></div>
-            <div className="receipt-team" style={{ "--team": teams.find((t) => t.id === receipt.team)?.color } as React.CSSProperties}><span>{teams.find((t) => t.id === receipt.team)?.code || "?"}</span><div><small>YOUR PICK</small><h2>{teamName(receipt.team)}</h2></div><Trophy /></div>
+            <div className="receipt-team" style={{ "--team": teams.find((t) => t.id === receipt.team)?.color } as React.CSSProperties}><span>{teams.find((t) => t.id === receipt.team)?.flag || "?"}</span><div><small>YOUR PICK</small><h2>{teamName(receipt.team)}</h2></div><Mark small /></div>
             <div className="receipt-details"><div><small>NAME</small><strong>{receipt.name}</strong></div><div><small>STAKE</small><strong>{money.format(poolState?.entry_fee || 100)}</strong></div><div><small>M-PESA RECEIPT</small><strong>{receipt.code}</strong></div><div><small>STATUS UPDATED</small><strong>{receipt.time}</strong></div></div>
             <div className="receipt-note"><Clock3 /><span><strong>{receipt.status === "confirmed" ? "Safaricom confirmed your payment." : ["failed", "cancelled", "timeout"].includes(receipt.status) ? "This payment did not complete." : "Waiting for Safaricom."}</strong> {receipt.status === "confirmed" ? "Your stake is included in the live pool." : ["failed", "cancelled", "timeout"].includes(receipt.status) ? "No money has been added to the pool. Return to Place a bet to try again." : "Processing entries are not counted in the live pool yet."}</span></div>
             <button className="outline-button full" onClick={() => { navigator.clipboard?.writeText(`Final Whistle receipt · ${receipt.code}`); setCopied(true); setTimeout(() => setCopied(false), 1500); }}><Copy /> {copied ? "Copied" : "Copy receipt code"}</button>
@@ -515,7 +534,7 @@ export default function PoolPage() {
             <div className="admin-heading"><div><small>{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}</small><h1>Organiser dashboard.</h1><p>Create matches, manage teams, close voting, and declare official winners.</p></div><div className="admin-heading-actions"><button className="outline-button" onClick={() => setEditingTeams(true)} disabled={!adminSelectedMatchId}><PencilLine /> Edit teams</button><button className="primary-button" onClick={() => setCreatingMatch(true)}>Add match <ArrowRight /></button></div></div>
             <div className="match-manager"><div><small>MANAGED MATCH</small><select value={adminSelectedMatchId || ""} onChange={(e) => adminToken && loadAdmin(adminToken, Number(e.target.value))}>{adminMatches.map((match) => <option value={match.id} key={match.id}>{match.event_name} · {match.status}</option>)}</select></div><div className={`match-status ${selectedAdminMatch?.status || "closed"}`}><i /> {selectedAdminMatch?.status || "closed"}</div><div className="match-manager-actions">{selectedAdminMatch?.status !== "settled" && (selectedAdminMatch?.status === "open" ? <button className="danger-button" onClick={() => setMatchStatus("closed")} disabled={busy}>Close match</button> : <button className="outline-button" onClick={() => setMatchStatus("open")} disabled={busy}>Reopen match</button>)}</div></div>
             {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
-            <div className="admin-stats"><div><span className="icon green"><UsersRound /></span><small>CONFIRMED</small><strong>{registrations.filter((r) => r.status === "confirmed").length}</strong><em>Callback verified</em></div><div><span className="icon blue"><Banknote /></span><small>TOTAL POOL</small><strong>{money.format(registrations.filter((r) => r.status === "confirmed").reduce((sum, item) => sum + (item.betId ? Number(selectedAdminMatch?.entry_fee || 0) : 0), 0))}</strong><em>This match</em></div><div><span className="icon amber"><Clock3 /></span><small>NEEDS REVIEW</small><strong>{registrations.filter((r) => r.betId && r.status !== "confirmed").length}</strong><em>Reconcile carefully</em></div><div><span className="icon coral"><Trophy /></span><small>STATUS</small><strong>{selectedAdminMatch?.status.toUpperCase() || "—"}</strong><em>{selectedAdminMatch ? new Date(selectedAdminMatch.betting_closes_at).toLocaleString() : "No match"}</em></div></div>
+            <div className="admin-stats"><div><span className="icon green"><UsersRound /></span><small>CONFIRMED</small><strong>{registrations.filter((r) => r.status === "confirmed").length}</strong><em>Callback verified</em></div><div><span className="icon blue"><Banknote /></span><small>TOTAL POOL</small><strong>{money.format(registrations.filter((r) => r.status === "confirmed").reduce((sum, item) => sum + (item.betId ? Number(selectedAdminMatch?.entry_fee || 0) : 0), 0))}</strong><em>This match</em></div><div><span className="icon amber"><Clock3 /></span><small>NEEDS REVIEW</small><strong>{registrations.filter((r) => r.betId && r.status !== "confirmed").length}</strong><em>Reconcile carefully</em></div><div><span className="icon coral"><Mark small /></span><small>STATUS</small><strong>{selectedAdminMatch?.status.toUpperCase() || "—"}</strong><em>{selectedAdminMatch ? new Date(selectedAdminMatch.betting_closes_at).toLocaleString() : "No match"}</em></div></div>
             <div className="admin-grid">
               <div className="admin-panel registrations"><div className="panel-heading"><div><h2>Recent entries</h2><p>Payment status and private reconciliation view.</p></div><button><MoreHorizontal /></button></div>
                 <div className="table-wrap"><table><thead><tr><th>PLAYER</th><th>PICK</th><th>M-PESA CODE</th><th>STATUS</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{registrations.map((item, index) => <tr key={`${item.id}-${index}`}><td><strong>{item.name}</strong><small>{item.phone} · {item.time}</small></td><td><span className={`pick-dot team-${adminTeams.find((team) => team.id === item.team)?.code.toLowerCase() || "none"}`} /> {item.team ? adminTeamName(item.team) : "No pick"}</td><td>{item.code}</td><td><span className={`status-pill ${item.status}`}><i /> {item.status}</span></td><td>{item.betId && item.status !== "confirmed" ? <button className="confirm-btn" onClick={() => confirmBet(item)}>Confirm</button> : <span className="dots" aria-label="No action available"><MoreHorizontal /></span>}</td></tr>)}</tbody></table></div>
