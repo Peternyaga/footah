@@ -66,8 +66,9 @@ button:disabled { opacity:.55; cursor:not-allowed; transform:none!important; }
 .hero-copy>p { max-width:525px; font-size:17px; line-height:1.7; color:#d8e6dd; }
 .hero-actions { margin-top:32px; display:flex; align-items:center; gap:22px; }
 .micro-proof { display:flex; align-items:center; gap:7px; color:#d9e6df; font-size:12px; }
-.hero-art { height:500px; min-height:0; position:relative; background:rgba(5,16,12,.38); overflow:hidden; contain:paint; }
-.hero-world-cup-image { width:100%; height:100%; display:block; object-fit:contain; object-position:center; filter:saturate(1.08) contrast(1.05) brightness(.9); }
+.hero-art { height:500px; min-height:0; position:relative; display:grid; place-items:center; background:radial-gradient(circle at 50% 42%,rgba(244,186,82,.2),transparent 34%),linear-gradient(145deg,rgba(5,16,12,.62),rgba(5,16,12,.32)); overflow:hidden; contain:paint; }
+.hero-art:before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(0,0,0,.24),transparent 28%,transparent 72%,rgba(0,0,0,.22)); pointer-events:none; }
+.hero-world-cup-image { width:min(82%,520px); height:calc(100% - 38px); display:block; object-fit:contain; object-position:center; filter:saturate(1.12) contrast(1.07) brightness(.96); position:relative; z-index:1; }
 .hero-photo-label { position:absolute; left:34px; bottom:34px; padding:14px 16px; display:flex; flex-direction:column; gap:3px; color:#fff; background:rgba(8,16,13,.6); border:1px solid rgba(255,255,255,.34); border-radius:8px; backdrop-filter:blur(12px); box-shadow:0 14px 36px rgba(0,0,0,.26); }
 .hero-photo-label small { font-size:8px; font-weight:800; letter-spacing:.16em; color:#f4ba52; }
 .hero-photo-label strong { font:700 21px/1 "Oswald"; letter-spacing:.04em; }
@@ -197,9 +198,12 @@ footer {
   border-top-color:rgba(255,255,255,.35);
   backdrop-filter:blur(14px);
 }
-@media (max-width: 1180px) {
+@media (max-width: 820px) {
   .nav { position:fixed; left:0; right:0; top:78px; z-index:1001; max-height:calc(100dvh - 78px); padding:16px 24px 24px; display:none; flex-direction:column; align-items:stretch; gap:0; overflow-y:auto; background:rgba(255,253,247,.98); border-bottom:1px solid var(--line); box-shadow:0 22px 34px rgba(0,0,0,.2); backdrop-filter:blur(18px); }.nav-open { display:flex; }.nav button { padding:15px 0; justify-content:flex-start; }.nav button.active:after { display:none; }.mobile-menu { display:block; }.header-actions>.outline-button { display:none; }
   .hero { grid-template-columns:1fr; }.hero-art { height:340px; }.hero-copy { padding:65px 40px; }.match-strip { padding:15px 28px; gap:18px; }.versus-small { font-size:12px; }.team-card { min-height:360px; }.countdown-section { grid-template-columns:1fr; gap:30px; }.form-layout { grid-template-columns:1fr; }.rules-card { order:-1; }.admin-stats { grid-template-columns:1fr 1fr; }.admin-grid { grid-template-columns:1fr; }.admin-heading { flex-direction:column; }.match-manager { grid-template-columns:1fr auto; }.match-manager-actions { grid-column:1/-1; }
+}
+@media (min-width: 821px) and (max-width: 1180px) {
+  .site-header { padding-inline:clamp(18px,3vw,38px); }.nav { gap:22px; }.header-actions .outline-button { padding-inline:14px; }.hero { grid-template-columns:1fr 1fr; }.hero-art { height:500px; }.hero-world-cup-image { width:min(78%,460px); }
 }
 @media (max-width: 680px) {
   .backdrop-video { object-position:center; opacity:.58; }
@@ -208,7 +212,7 @@ footer {
   .backdrop-performance-duet { background-position:center top; }
   .backdrop-performance-close { background-position:center top; }
   .topline { font-size:8px; letter-spacing:.11em; }.site-header { height:68px; padding:0 17px; }.nav { top:68px; max-height:calc(100dvh - 68px); }.brand strong { font-size:14px; }.brand small { font-size:10px; }.mark { width:33px; height:33px; }
-  .hero { min-height:auto; }.hero-copy { padding:50px 24px 45px; }.hero h1 { font-size:50px; }.hero-copy>p { font-size:14px; }.hero-actions { align-items:flex-start; flex-direction:column; }.hero-art { height:260px; }.hero-world-cup-image { object-position:center; }.hero-photo-label { left:18px; right:18px; bottom:18px; }
+  .hero { min-height:auto; }.hero-copy { padding:50px 24px 45px; }.hero h1 { font-size:50px; }.hero-copy>p { font-size:14px; }.hero-actions { align-items:flex-start; flex-direction:column; }.hero-art { height:270px; }.hero-world-cup-image { width:min(74%,330px); height:calc(100% - 28px); object-position:center; }.hero-photo-label { left:18px; right:18px; bottom:18px; }
   .match-strip { grid-template-columns:1fr 1fr; }.match-center { grid-column:1/-1; grid-row:1; }.versus-small { justify-content:center; }.match-meta { grid-row:2; }.match-meta.right { grid-column:2; }
   .content-shell { width:min(100% - 30px,1160px); }.pool-section,.how-section { padding-top:58px; padding-bottom:60px; }.section-heading { align-items:flex-start; flex-direction:column; }.pool-total { border-left:0; padding-left:0; }.team-grid { grid-template-columns:1fr; }.team-card { padding:22px; }.share-bar { align-items:flex-start; flex-direction:column; }
   .countdown-section { padding:52px 18px; }.countdown { gap:4px; }.countdown div { padding:16px 2px; }.countdown strong { font-size:31px; }.steps-grid { grid-template-columns:1fr; }.steps-grid>div { border-right:0; border-bottom:1px solid var(--line); padding-left:12px; padding-right:12px; }.steps-grid>div:last-child { border:0; }
