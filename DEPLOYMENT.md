@@ -143,7 +143,9 @@ npm ci
 npm run build
 ```
 
-Upload the contents of `dist/assets/` to the frontend domain's public directory. The generated `dist/worker.js` is for the ChatGPT Sites runtime and is not needed on an ordinary static host. If your host supports a Node/Next deployment instead, it can run the normal Next build, but static hosting is sufficient for this app.
+For cPanel/static hosting, upload the contents of `dist/cpanel/` to the frontend domain's public directory, usually `public_html/`. Do not upload the parent `dist/` folder itself. The browser expects media at paths such as `/assets/videos/dna-performance-background.mp4` and `/assets/music/world-cup-2026-anthem-dna-ultralight.mp3`, and `dist/cpanel/` preserves that exact layout.
+
+The build also creates `dist/assets/` for the ChatGPT Sites runtime. If you use that older manual flow, upload the contents of `dist/assets/`, not the parent `dist/` folder. The generated `dist/server/` files are not needed on ordinary cPanel static hosting.
 
 ## 6. Go-live checklist
 
