@@ -1,70 +1,58 @@
 "use client";
 
-import { Volume2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 
 type BackgroundAnthemProps = {
   src: string;
 };
 
 export function BackgroundAnthem({ src }: BackgroundAnthemProps) {
-  const [needsUnlock, setNeedsUnlock] = useState(false);
-
   const playAnthem = useCallback(() => {
     const audio = document.getElementById("background-anthem") as HTMLAudioElement | null;
     if (!audio) return;
 
     audio.volume = 0.72;
-    audio.muted = false;
-
-    const result = audio.play();
-    if (!result) return;
-
-    result
-      .then(() => setNeedsUnlock(false))
-      .catch(() => setNeedsUnlock(true));
+    audio.play().catch(() => undefined);
   }, []);
 
   useEffect(() => {
     const audio = document.getElementById("background-anthem") as HTMLAudioElement | null;
     if (!audio) return;
 
-    const markPlaying = () => setNeedsUnlock(false);
-    const tryWhenVisible = () => {
-      if (document.visibilityState === "visible") playAnthem();
+    const unmuteAndPlay = () => {
+      audio.volume = 0.72;
+      audio.muted = false;
+      playAnthem();
     };
 
-    audio.addEventListener("play", markPlaying);
-    audio.addEventListener("canplay", playAnthem);
-    window.addEventListener("pageshow", playAnthem);
+    const tryWhenVisible = () => {
+      if (document.visibilityState === "visible") unmuteAndPlay();
+    };
+
+    audio.muted = true;
+    playAnthem();
+
+    const unmuteTimers = [250, 750, 1500, 3000].map((delay) => window.setTimeout(unmuteAndPlay, delay));
+
+    audio.addEventListener("canplay", unmuteAndPlay);
+    window.addEventListener("pageshow", unmuteAndPlay);
     document.addEventListener("visibilitychange", tryWhenVisible);
 
     const gestureEvents: Array<keyof WindowEventMap> = ["click", "pointerdown", "touchstart", "keydown"];
     for (const event of gestureEvents) {
-      window.addEventListener(event, playAnthem, { capture: true, passive: true });
+      window.addEventListener(event, unmuteAndPlay, { capture: true, passive: true });
     }
 
-    playAnthem();
-
     return () => {
-      audio.removeEventListener("play", markPlaying);
-      audio.removeEventListener("canplay", playAnthem);
-      window.removeEventListener("pageshow", playAnthem);
+      for (const timer of unmuteTimers) window.clearTimeout(timer);
+      audio.removeEventListener("canplay", unmuteAndPlay);
+      window.removeEventListener("pageshow", unmuteAndPlay);
       document.removeEventListener("visibilitychange", tryWhenVisible);
       for (const event of gestureEvents) {
-        window.removeEventListener(event, playAnthem, { capture: true });
+        window.removeEventListener(event, unmuteAndPlay, { capture: true });
       }
     };
   }, [playAnthem]);
 
-  return (
-    <>
-      <audio id="background-anthem" src={src} autoPlay loop preload="auto" aria-hidden="true" />
-      {needsUnlock && (
-        <button className="anthem-unlock" type="button" onClick={playAnthem} aria-label="Play anthem">
-          <Volume2 />
-        </button>
-      )}
-    </>
-  );
+  return <audio id="background-anthem" src={src} autoPlay muted loop preload="auto" aria-hidden="true" />;
 }

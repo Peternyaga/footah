@@ -28,16 +28,23 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   const audio = document.getElementById("background-anthem");
                   if (!audio) return;
                   audio.volume = 0.72;
+                  audio.play().catch(() => {});
+                };
+                const unmuteAnthem = () => {
+                  const audio = document.getElementById("background-anthem");
+                  if (!audio) return;
+                  audio.volume = 0.72;
                   audio.muted = false;
                   audio.play().catch(() => {});
                 };
                 playAnthem();
+                [250, 750, 1500, 3000].forEach((delay) => window.setTimeout(unmuteAnthem, delay));
                 if (document.readyState === "loading") {
-                  document.addEventListener("DOMContentLoaded", playAnthem, { once: true });
+                  document.addEventListener("DOMContentLoaded", unmuteAnthem, { once: true });
                 }
-                window.addEventListener("pointerdown", playAnthem, { once: true, capture: true });
-                window.addEventListener("touchstart", playAnthem, { once: true, capture: true });
-                window.addEventListener("keydown", playAnthem, { once: true, capture: true });
+                window.addEventListener("pointerdown", unmuteAnthem, { capture: true });
+                window.addEventListener("touchstart", unmuteAnthem, { capture: true });
+                window.addEventListener("keydown", unmuteAnthem, { capture: true });
               })();
             `,
           }}
