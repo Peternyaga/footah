@@ -272,6 +272,26 @@ class PoolFlowTest extends TestCase
 
         $this->assertSame([167, 166, 166], Payout::query()->orderBy('id')->pluck('amount')->all());
         $this->assertDatabaseHas('pool_settings', ['status' => PoolSetting::STATUS_SETTLED, 'winner_team_id' => $this->teamA->id]);
+
+        $payout = Payout::query()->orderBy('id')->firstOrFail();
+        $overview = $this->withToken($token)->getJson('/api/admin/overview')->assertOk();
+        $registration = collect($overview->json('data.registrations'))->first(
+            fn (array $item): bool => ($item['bet']['payout']['id'] ?? null) === $payout->id
+        );
+        $this->assertSame('pending', $registration['bet']['payout']['status'] ?? null);
+        $this->assertSame($payout->amount, $registration['bet']['payout']['amount'] ?? null);
+
+        $this->withToken($token)->postJson('/api/admin/payouts/'.$payout->id.'/paid', [
+            'mpesa_receipt_number' => 'PAY123ABC',
+        ])->assertOk()
+            ->assertJsonPath('data.status', 'paid')
+            ->assertJsonPath('data.mpesa_receipt_number', 'PAY123ABC');
+
+        $this->assertDatabaseHas('payouts', [
+            'id' => $payout->id,
+            'status' => 'paid',
+            'mpesa_receipt_number' => 'PAY123ABC',
+        ]);
     }
 
     public function test_admin_can_create_close_and_settle_a_match_with_teams(): void

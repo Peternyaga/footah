@@ -48,7 +48,13 @@ class AdminPoolController extends Controller
                         'status' => $bet->status,
                         'mpesa_receipt_number' => $bet->mpesa_receipt_number,
                         'result_description' => $bet->result_description,
-                        'payout' => $bet->payout?->amount,
+                        'payout' => $bet->payout ? [
+                            'id' => $bet->payout->id,
+                            'amount' => $bet->payout->amount,
+                            'status' => $bet->payout->status,
+                            'mpesa_receipt_number' => $bet->payout->mpesa_receipt_number,
+                            'paid_at' => $bet->payout->paid_at?->toIso8601String(),
+                        ] : null,
                     ] : null,
                 ];
             }),

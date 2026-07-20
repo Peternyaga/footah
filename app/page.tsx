@@ -32,13 +32,14 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { AdminOverview, ApiError, ApiMatch, BetReceipt, ChatItem, PoolState, VoteChoice, apiRequest } from "../lib/api";
+import { AdminOverview, AdminPayout, ApiError, ApiMatch, BetReceipt, ChatItem, PoolState, VoteChoice, apiRequest } from "../lib/api";
 import { assetPath } from "../lib/assets";
 
 type View = "home" | "play" | "chat" | "receipt" | "admin";
 type AuthMode = "register" | "login";
+type AdminSection = "overview" | "entries" | "payouts" | "chat";
 type Team = { id: number; code: string; name: string; route: string; color: string; color2: string; backers: number; votes: number; amount: number; image: string; flag: string; player: string };
-type Registration = { id?: string; betId?: number; name: string; phone: string; team: number; code: string; status: BetReceipt["status"]; time: string };
+type Registration = { id?: string; betId?: number; name: string; phone: string; team: number; code: string; status: BetReceipt["status"]; time: string; payout?: AdminPayout | null };
 
 const baseTeams: Team[] = [
   { id: 1, code: "ARG", name: "Argentina", route: "Finalist · Messi leads the holders", color: "#74c7f5", color2: "#ffffff", backers: 0, votes: 0, amount: 0, image: assetPath("/assets/images/argentina-lionel-messi.jpg"), flag: "🇦🇷", player: "Lionel Messi" },
@@ -48,6 +49,13 @@ const baseTeams: Team[] = [
 const seededRegistrations: Registration[] = [];
 
 const seededMessages: Array<{ name: string; initials: string; text: string; time: string; color: string }> = [];
+
+const adminSectionCopy: Record<AdminSection, { title: string; description: string }> = {
+  overview: { title: "Organiser dashboard", description: "Manage the selected match, review activity, and declare the official winner." },
+  entries: { title: "Entries", description: "Review every participant, payment state, pick, and M-Pesa receipt for this match." },
+  payouts: { title: "Payouts", description: "Track generated winner payouts and record each outgoing M-Pesa payment." },
+  chat: { title: "Admin chat", description: "Read the office conversation and post as the organiser." },
+};
 
 const money = new Intl.NumberFormat("en-KE", { style: "currency", currency: "KES", maximumFractionDigits: 0 });
 
@@ -119,6 +127,7 @@ export default function PoolPage() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [adminSection, setAdminSection] = useState<AdminSection>("overview");
   const [poolState, setPoolState] = useState<PoolState | null>(null);
   const [receipt, setReceipt] = useState<Registration | null>(null);
   const [copied, setCopied] = useState(false);
@@ -184,7 +193,7 @@ export default function PoolPage() {
     setAdminSelectedMatchId(overview.settings.id);
     setAdminTeams(overview.teams.map((team, index) => presentTeam(team, index)));
     setDraftNames(overview.teams.map((team) => team.name));
-    setRegistrations(overview.registrations.map((item) => ({ id: item.id, betId: item.bet?.id, name: item.name, phone: item.phone_number, team: item.bet?.team_id || 0, code: item.bet?.mpesa_receipt_number || "—", status: item.bet?.status || "pending", time: new Date(item.created_at).toLocaleString() })));
+    setRegistrations(overview.registrations.map((item) => ({ id: item.id, betId: item.bet?.id, name: item.name, phone: item.phone_number, team: item.bet?.team_id || 0, code: item.bet?.mpesa_receipt_number || "—", status: item.bet?.status || "pending", time: new Date(item.created_at).toLocaleString(), payout: item.bet?.payout })));
     setAdminWinner(overview.settings.winner_team_id);
   }, []);
 
@@ -300,12 +309,20 @@ export default function PoolPage() {
     catch (error) { setFormError(error instanceof Error ? error.message : "Message failed."); }
   };
 
+  const sendAdminMessage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || !adminToken) { setFormError("Enter a message before posting."); return; }
+    setFormError("");
+    try { await apiRequest<ChatItem>("/chat", { method: "POST", body: JSON.stringify({ message: message.trim() }) }, adminToken); setMessage(""); await refreshChat(adminToken); }
+    catch (error) { setFormError(error instanceof Error ? error.message : "Message failed."); }
+  };
+
   const loginAdmin = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true); setFormError("");
     try {
       const result = await apiRequest<{ token: string }>("/admin/login", { method: "POST", body: JSON.stringify({ email: adminEmail, password: passcode }) });
-      sessionStorage.setItem("final-pool-admin-token", result.token); setAdminToken(result.token); setAdminUnlocked(true); await loadAdmin(result.token);
+      sessionStorage.setItem("final-pool-admin-token", result.token); setAdminToken(result.token); setAdminUnlocked(true); setAdminSection("overview"); await loadAdmin(result.token);
     } catch (error) { setFormError(error instanceof Error ? error.message : "Admin login failed."); }
     finally { setBusy(false); }
   };
@@ -352,9 +369,28 @@ export default function PoolPage() {
     catch (error) { setFormError(error instanceof Error ? error.message : "Manual confirmation failed."); }
   };
 
+  const selectAdminSection = (section: AdminSection) => {
+    setAdminSection(section);
+    setFormError("");
+    if (section === "chat" && adminToken) refreshChat(adminToken).catch((error) => setFormError(error instanceof Error ? error.message : "Chat could not be loaded."));
+  };
+
+  const markPayoutPaid = async (item: Registration) => {
+    if (!adminToken || !item.payout || item.payout.status === "paid") return;
+    const receiptCode = window.prompt(`Enter the M-Pesa payout receipt for ${item.name}:`);
+    if (!receiptCode?.trim()) return;
+    setBusy(true); setFormError("");
+    try { await apiRequest(`/admin/payouts/${item.payout.id}/paid`, { method: "POST", body: JSON.stringify({ mpesa_receipt_number: receiptCode.trim() }) }, adminToken); await loadAdmin(adminToken, adminSelectedMatchId); }
+    catch (error) { setFormError(error instanceof Error ? error.message : "The payout could not be marked paid."); }
+    finally { setBusy(false); }
+  };
+
   const teamName = (id: number) => teams.find((team) => team.id === id)?.name || `Team ${id}`;
   const adminTeamName = (id: number) => adminTeams.find((team) => team.id === id)?.name || `Team ${id}`;
   const selectedAdminMatch = adminMatches.find((match) => match.id === adminSelectedMatchId);
+  const adminPayouts = registrations.filter((item) => item.payout);
+  const adminPayoutTotal = adminPayouts.reduce((sum, item) => sum + Number(item.payout?.amount || 0), 0);
+  const paidPayouts = adminPayouts.filter((item) => item.payout?.status === "paid");
 
   return (
     <main>
@@ -530,18 +566,34 @@ export default function PoolPage() {
 
       {view === "admin" && adminUnlocked && (
         <section className="admin-page">
-          <aside className="admin-rail"><div className="admin-brand"><Mark small /><strong>FINAL<br />WHISTLE</strong></div><button className="selected"><LayoutDashboard /> Overview</button><button><UsersRound /> Entries</button><button><Banknote /> Payouts</button><button><MessageCircle /> Chat</button><span /><button onClick={() => { sessionStorage.removeItem("final-pool-admin-token"); setAdminToken(null); setAdminUnlocked(false); }}><LogOut /> Lock room</button></aside>
+          <aside className="admin-rail" aria-label="Admin sections">
+            <div className="admin-brand"><Mark small /><strong>FINAL<br />WHISTLE</strong></div>
+            <button type="button" className={adminSection === "overview" ? "selected" : ""} aria-current={adminSection === "overview" ? "page" : undefined} onClick={() => selectAdminSection("overview")}><LayoutDashboard /> Overview</button>
+            <button type="button" className={adminSection === "entries" ? "selected" : ""} aria-current={adminSection === "entries" ? "page" : undefined} onClick={() => selectAdminSection("entries")}><UsersRound /> Entries</button>
+            <button type="button" className={adminSection === "payouts" ? "selected" : ""} aria-current={adminSection === "payouts" ? "page" : undefined} onClick={() => selectAdminSection("payouts")}><Banknote /> Payouts</button>
+            <button type="button" className={adminSection === "chat" ? "selected" : ""} aria-current={adminSection === "chat" ? "page" : undefined} onClick={() => selectAdminSection("chat")}><MessageCircle /> Chat</button>
+            <span />
+            <button type="button" onClick={() => { sessionStorage.removeItem("final-pool-admin-token"); setAdminToken(null); setAdminUnlocked(false); setAdminSection("overview"); }}><LogOut /> Lock room</button>
+          </aside>
           <div className="admin-main">
-            <div className="admin-heading"><div><small>{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}</small><h1>Organiser dashboard.</h1><p>Create matches, manage teams, close voting, and declare official winners.</p></div><div className="admin-heading-actions"><button className="outline-button" onClick={() => setEditingTeams(true)} disabled={!adminSelectedMatchId}><PencilLine /> Edit teams</button><button className="primary-button" onClick={() => setCreatingMatch(true)}>Add match <ArrowRight /></button></div></div>
-            <div className="match-manager"><div><small>MANAGED MATCH</small><select value={adminSelectedMatchId || ""} onChange={(e) => adminToken && loadAdmin(adminToken, Number(e.target.value))}>{adminMatches.map((match) => <option value={match.id} key={match.id}>{match.event_name} · {match.status}</option>)}</select></div><div className={`match-status ${selectedAdminMatch?.status || "closed"}`}><i /> {selectedAdminMatch?.status || "closed"}</div><div className="match-manager-actions">{selectedAdminMatch?.status !== "settled" && (selectedAdminMatch?.status === "open" ? <button className="danger-button" onClick={() => setMatchStatus("closed")} disabled={busy}>Close match</button> : <button className="outline-button" onClick={() => setMatchStatus("open")} disabled={busy}>Reopen match</button>)}</div></div>
-            {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
-            <div className="admin-stats"><div><span className="icon green"><UsersRound /></span><small>CONFIRMED</small><strong>{registrations.filter((r) => r.status === "confirmed").length}</strong><em>Callback verified</em></div><div><span className="icon blue"><Banknote /></span><small>TOTAL POOL</small><strong>{money.format(registrations.filter((r) => r.status === "confirmed").reduce((sum, item) => sum + (item.betId ? Number(selectedAdminMatch?.entry_fee || 0) : 0), 0))}</strong><em>This match</em></div><div><span className="icon amber"><Clock3 /></span><small>NEEDS REVIEW</small><strong>{registrations.filter((r) => r.betId && r.status !== "confirmed").length}</strong><em>Reconcile carefully</em></div><div><span className="icon coral"><Mark small /></span><small>STATUS</small><strong>{selectedAdminMatch?.status.toUpperCase() || "—"}</strong><em>{selectedAdminMatch ? new Date(selectedAdminMatch.betting_closes_at).toLocaleString() : "No match"}</em></div></div>
-            <div className="admin-grid">
-              <div className="admin-panel registrations"><div className="panel-heading"><div><h2>Recent entries</h2><p>Payment status and private reconciliation view.</p></div><button><MoreHorizontal /></button></div>
-                <div className="table-wrap"><table><thead><tr><th>PLAYER</th><th>PICK</th><th>M-PESA CODE</th><th>STATUS</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{registrations.map((item, index) => <tr key={`${item.id}-${index}`}><td><strong>{item.name}</strong><small>{item.phone} · {item.time}</small></td><td><span className={`pick-dot team-${adminTeams.find((team) => team.id === item.team)?.code.toLowerCase() || "none"}`} /> {item.team ? adminTeamName(item.team) : "No pick"}</td><td>{item.code}</td><td><span className={`status-pill ${item.status}`}><i /> {item.status}</span></td><td>{item.betId && item.status !== "confirmed" ? <button className="confirm-btn" onClick={() => confirmBet(item)}>Confirm</button> : <span className="dots" aria-label="No action available"><MoreHorizontal /></span>}</td></tr>)}</tbody></table></div>
-              </div>
-              <div className="admin-panel settle-panel"><div className="panel-heading"><div><h2>Declare winner</h2><p>{selectedAdminMatch?.event_name || "Select a match"}</p></div><ShieldCheck /></div>{adminWinner ? <div className="settled"><Crown /><h3>{adminTeamName(adminWinner)}</h3><p>Winner recorded. The server generated the reviewed payout list.</p></div> : <><div className="settle-warning"><CircleAlert /><span>This action calculates payouts and publishes the result to every participant.</span></div><small className="field-label">SELECT WINNING TEAM</small>{adminTeams.map((team) => <button className="winner-choice" key={team.id} onClick={() => { setWinnerCandidate(team.id); setConfirmText(""); }}><span style={{ background: team.color }}>{team.code}</span><div><small>{team.route}</small><strong>{team.name}</strong></div><ArrowRight /></button>)}</>}</div>
+            <div className="admin-heading">
+              <div><small>{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}</small><h1>{adminSectionCopy[adminSection].title}</h1><p>{adminSectionCopy[adminSection].description}</p></div>
+              {adminSection === "overview" && <div className="admin-heading-actions"><button className="outline-button" onClick={() => setEditingTeams(true)} disabled={!adminSelectedMatchId}><PencilLine /> Edit teams</button><button className="primary-button" onClick={() => setCreatingMatch(true)}>Add match <ArrowRight /></button></div>}
             </div>
+            {adminSection !== "chat" && <div className="match-manager"><div><small>MANAGED MATCH</small><select value={adminSelectedMatchId || ""} onChange={(e) => adminToken && loadAdmin(adminToken, Number(e.target.value))}>{adminMatches.map((match) => <option value={match.id} key={match.id}>{match.event_name} · {match.status}</option>)}</select></div><div className={`match-status ${selectedAdminMatch?.status || "closed"}`}><i /> {selectedAdminMatch?.status || "closed"}</div><div className="match-manager-actions">{selectedAdminMatch?.status !== "settled" && (selectedAdminMatch?.status === "open" ? <button className="danger-button" onClick={() => setMatchStatus("closed")} disabled={busy}>Close match</button> : <button className="outline-button" onClick={() => setMatchStatus("open")} disabled={busy}>Reopen match</button>)}</div></div>}
+            {formError && <div className="form-error" role="alert"><CircleAlert /> {formError}</div>}
+            {adminSection === "overview" && <>
+              <div className="admin-stats"><div><span className="icon green"><UsersRound /></span><small>CONFIRMED</small><strong>{registrations.filter((r) => r.status === "confirmed").length}</strong><em>Callback verified</em></div><div><span className="icon blue"><Banknote /></span><small>TOTAL POOL</small><strong>{money.format(registrations.filter((r) => r.status === "confirmed").reduce((sum, item) => sum + (item.betId ? Number(selectedAdminMatch?.entry_fee || 0) : 0), 0))}</strong><em>This match</em></div><div><span className="icon amber"><Clock3 /></span><small>NEEDS REVIEW</small><strong>{registrations.filter((r) => r.betId && r.status !== "confirmed").length}</strong><em>Reconcile carefully</em></div><div><span className="icon coral"><Mark small /></span><small>STATUS</small><strong>{selectedAdminMatch?.status.toUpperCase() || "—"}</strong><em>{selectedAdminMatch ? new Date(selectedAdminMatch.betting_closes_at).toLocaleString() : "No match"}</em></div></div>
+              <div className="admin-grid">
+                <div className="admin-panel registrations"><div className="panel-heading"><div><h2>Recent entries</h2><p>Latest participants for the selected match.</p></div><button type="button" className="panel-link" onClick={() => selectAdminSection("entries")}>View all <ArrowRight /></button></div>
+                  <div className="table-wrap"><table><thead><tr><th>PLAYER</th><th>PICK</th><th>M-PESA CODE</th><th>STATUS</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{registrations.slice(0, 8).map((item, index) => <tr key={`${item.id}-${index}`}><td><strong>{item.name}</strong><small>{item.phone} · {item.time}</small></td><td><span className={`pick-dot team-${adminTeams.find((team) => team.id === item.team)?.code.toLowerCase() || "none"}`} /> {item.team ? adminTeamName(item.team) : "No pick"}</td><td>{item.code}</td><td><span className={`status-pill ${item.status}`}><i /> {item.status}</span></td><td>{item.betId && item.status !== "confirmed" ? <button className="confirm-btn" onClick={() => confirmBet(item)}>Confirm</button> : <span className="dots" aria-label="No action available"><MoreHorizontal /></span>}</td></tr>)}</tbody></table></div>
+                </div>
+                <div className="admin-panel settle-panel"><div className="panel-heading"><div><h2>Declare winner</h2><p>{selectedAdminMatch?.event_name || "Select a match"}</p></div><ShieldCheck /></div>{adminWinner ? <div className="settled"><Crown /><h3>{adminTeamName(adminWinner)}</h3><p>Winner recorded. <button type="button" className="inline-link" onClick={() => selectAdminSection("payouts")}>Review payouts</button></p></div> : <><div className="settle-warning"><CircleAlert /><span>This action calculates payouts and publishes the result to every participant.</span></div><small className="field-label">SELECT WINNING TEAM</small>{adminTeams.map((team) => <button className="winner-choice" key={team.id} onClick={() => { setWinnerCandidate(team.id); setConfirmText(""); }}><span style={{ background: team.color }}>{team.code}</span><div><small>{team.route}</small><strong>{team.name}</strong></div><ArrowRight /></button>)}</>}</div>
+              </div>
+            </>}
+            {adminSection === "entries" && <div className="admin-panel admin-section-panel"><div className="panel-heading"><div><h2>All entries</h2><p>{registrations.length} participant{registrations.length === 1 ? "" : "s"} · {registrations.filter((item) => item.status === "confirmed").length} confirmed</p></div><ReceiptText /></div>{registrations.length === 0 ? <div className="admin-empty"><UsersRound /><h3>No entries yet</h3><p>Participant registrations for this match will appear here.</p></div> : <div className="table-wrap"><table><thead><tr><th>PLAYER</th><th>PICK</th><th>M-PESA CODE</th><th>STATUS</th><th>REGISTERED</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{registrations.map((item, index) => <tr key={`${item.id}-${index}`}><td><strong>{item.name}</strong><small>{item.phone}</small></td><td>{item.team ? adminTeamName(item.team) : "No pick"}</td><td>{item.code}</td><td><span className={`status-pill ${item.status}`}><i /> {item.status}</span></td><td>{item.time}</td><td>{item.betId && item.status !== "confirmed" ? <button className="confirm-btn" onClick={() => confirmBet(item)}>Confirm payment</button> : <span className="table-muted">—</span>}</td></tr>)}</tbody></table></div>}</div>}
+            {adminSection === "payouts" && <div className="admin-section-stack"><div className="payout-summary"><div><small>TOTAL PAYOUT</small><strong>{money.format(adminPayoutTotal)}</strong></div><div><small>WINNERS</small><strong>{adminPayouts.length}</strong></div><div><small>PAID</small><strong>{paidPayouts.length}/{adminPayouts.length}</strong></div></div><div className="admin-panel admin-section-panel"><div className="panel-heading"><div><h2>Winner payouts</h2><p>{selectedAdminMatch?.status === "settled" ? "Record the outgoing M-Pesa receipt after paying each winner." : "Payouts are generated when the winner is declared."}</p></div><Banknote /></div>{adminPayouts.length === 0 ? <div className="admin-empty"><Banknote /><h3>No payouts generated</h3><p>{selectedAdminMatch?.status === "settled" ? "This settled match has no winning paid entries." : "Return to Overview and declare the winner after the match closes."}</p>{selectedAdminMatch?.status !== "settled" && <button className="outline-button" type="button" onClick={() => selectAdminSection("overview")}>Go to overview</button>}</div> : <div className="table-wrap"><table><thead><tr><th>WINNER</th><th>PICK</th><th>AMOUNT</th><th>STATUS</th><th>PAYOUT RECEIPT</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{adminPayouts.map((item, index) => <tr key={`${item.id}-${index}`}><td><strong>{item.name}</strong><small>{item.phone}</small></td><td>{adminTeamName(item.team)}</td><td><strong>{money.format(Number(item.payout?.amount || 0))}</strong></td><td><span className={`payout-status ${item.payout?.status}`}><i /> {item.payout?.status}</span></td><td>{item.payout?.mpesa_receipt_number || "—"}{item.payout?.paid_at && <small>{new Date(item.payout.paid_at).toLocaleString()}</small>}</td><td>{item.payout?.status === "pending" ? <button className="confirm-btn" type="button" disabled={busy} onClick={() => markPayoutPaid(item)}>Mark paid</button> : <BadgeCheck className="paid-check" aria-label="Paid" />}</td></tr>)}</tbody></table></div>}</div></div>}
+            {adminSection === "chat" && <div className="admin-panel admin-chat-panel"><div className="panel-heading"><div><h2>Office chat</h2><p>{messages.length} visible message{messages.length === 1 ? "" : "s"}</p></div><button type="button" className="panel-link" onClick={() => adminToken && refreshChat(adminToken).catch(() => undefined)}>Refresh</button></div><div className="chat-list">{messages.length === 0 ? <div className="admin-empty"><MessageCircle /><h3>No messages yet</h3><p>The office conversation will appear here.</p></div> : messages.map((item, index) => <div className="message-row" key={`${item.time}-${index}`}><span className={`avatar ${item.color}`}>{item.initials}</span><div><div className="message-meta"><strong>{item.name}</strong><small>{item.time}</small></div><p>{item.text}</p></div></div>)}</div><form className="chat-compose" onSubmit={sendAdminMessage}><span className="avatar green">AD</span><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Post as the organiser…" aria-label="Admin chat message" /><button aria-label="Send message"><Send /></button></form></div>}
           </div>
         </section>
       )}

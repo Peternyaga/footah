@@ -77,6 +77,14 @@ export type BetReceipt = {
 
 export type ChatItem = { id: number; name: string; message: string; created_at: string };
 
+export type AdminPayout = {
+  id: number;
+  amount: number;
+  status: "pending" | "paid";
+  mpesa_receipt_number: string | null;
+  paid_at: string | null;
+};
+
 export type AdminOverview = {
   settings: ApiMatch & { cost_deduction: number };
   matches: ApiMatch[];
@@ -95,7 +103,7 @@ export type AdminOverview = {
       status: BetReceipt["status"];
       mpesa_receipt_number: string | null;
       result_description: string | null;
-      payout: number | null;
+      payout: AdminPayout | null;
     };
   }>;
 };
